@@ -8,10 +8,11 @@ Gentic implements five essential agentic AI patterns:
 
 - **Intent Routing** — Intelligently route requests to different agent strategies based on user intent
 - **Planning and Execution** — Break down complex tasks into actionable steps and execute them systematically
-- **Reflection** — Enable agents to evaluate their work, identify mistakes, and improve iteratively
-- **ReAct (Reasoning & Acting)** — Thought→Observation→Action loops that combine reasoning with tool use
 - **Metadata / Ambient Context** — Thread contextual information through agent execution for stateful interactions
+- **ReAct (Reasoning & Acting)** — Thought→Observation→Action loops that combine reasoning with tool use
+- **Reflection** — Enable agents to evaluate their work, identify mistakes, and improve iteratively
 
+Sections follow that order: **Intent Routing** → **Planning and Execution** → **Metadata / Ambient Context** → **ReAct (Reasoning & Acting)** → **Reflection**. After those five, **[Memory](#memory)** (optional multi-turn storage) and **[Security Features](#security-features)** describe agent-level capabilities that compose with any pattern.
 
 ## Intent Routing
 
@@ -76,29 +77,28 @@ result, err := agent.Run("How do I make a cup of tea?")
 
 Step through the tea examples: **[planning-01](./examples/simple/planning-01)** (LLM plan), **[planning-02](./examples/simple/planning-02)** (static sequence), **[planning-03](./examples/simple/planning-03)** (static with a parallel wave)—`go run ./examples/simple/planning-01/main.go` (and `-02`, `-03`).
 
-## Reflection
+## Metadata / Ambient Context
 
-Reflection adds a **generate → critique → refine** loop: one model pass produces a draft, another judges it against the original request. If the critic answers with exactly `PASS`, the loop stops; otherwise it feeds structured feedback into the next draft (up to a configurable cap). That keeps quality work from being “one shot” without hand-writing orchestration.
-
-A **`reflect.Reflector`** is used like other resolvers: it resolves to a single flow step that runs the whole loop. Drafts land in **`result.Observations`** (task ID `generate`), critiques in **`result.Thoughts`**, and **`result.Output`** is the last accepted or final draft. Defaults encourage `PASS` / `IMPROVE:`-style replies; you can swap **`WithGeneratePrompt`** and **`WithCritiquePrompt`** for domain-specific writing or code review (see **reflection-02**).
+Thread **ambient context** (user id, tenant, request id, feature flags) through a run without baking it into the prompt. Use **`RunWithContext`** with **`AgentInput`**: **`Metadata`** is available on **`state.Metadata`** for your steps. Prefer **`state.SecureMetadata()`** in tools and integrations—only **public** keys are visible; keys prefixed with **`'_'`** are **private** (credentials stay off tool-facing APIs). ReAct can optionally warn when a tool’s JSON output looks like it leaks private metadata.
 
 ```go
-import (
-	"github.com/daniel-dihardja/gentic/pkg/gentic"
-	"github.com/daniel-dihardja/gentic/pkg/gentic/reflect"
-)
+import "github.com/daniel-dihardja/gentic/pkg/gentic"
 
-resolver := reflect.NewReflector(
-	reflect.WithMaxIterations(3),
-	// Optional: reflect.WithGeneratePrompt(...), reflect.WithCritiquePrompt(...)
-)
+agent := gentic.Agent{Resolver: yourResolver}
 
-agent := gentic.Agent{Resolver: resolver}
-result, err := agent.Run("Write a concise cover letter for a backend role.")
-// result.Observations — drafts; result.Thoughts — critiques; result.Output — final text
+result, err := agent.RunWithContext(gentic.AgentInput{
+	Query: "What is the capital of Germany?",
+	Metadata: map[string]interface{}{
+		"user_id":      "user_12345",
+		"tenant_id":    "tenant_abc",
+		"request_id":   "req_xyz789",
+		"_api_key":     "secret-not-for-tools", // '_' prefix — private; use SecureMetadata() for safe reads
+	},
+})
+// In tools: state.SecureMetadata().GetString("user_id") — not raw Metadata for secrets
 ```
 
-Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and **[reflection-02](./examples/simple/reflection-02)** (custom Go-focused generate/critique)—`go run ./examples/simple/reflection-01/main.go` and `reflection-02`.
+Minimal walkthrough: **[examples/applications/with-metadata](./examples/applications/with-metadata)** (`go run ./examples/applications/with-metadata/main.go`).
 
 ## ReAct (Reasoning & Acting)
 
@@ -125,6 +125,30 @@ result, err := agent.Run("What is 347 × 19?")
 // result.Thoughts — reasoning turns; result.Observations — tool JSON; result.Output — final answer
 ```
 
+## Reflection
+
+Reflection adds a **generate → critique → refine** loop: one model pass produces a draft, another judges it against the original request. If the critic answers with exactly `PASS`, the loop stops; otherwise it feeds structured feedback into the next draft (up to a configurable cap). That keeps quality work from being “one shot” without hand-writing orchestration.
+
+A **`reflect.Reflector`** is used like other resolvers: it resolves to a single flow step that runs the whole loop. Drafts land in **`result.Observations`** (task ID `generate`), critiques in **`result.Thoughts`**, and **`result.Output`** is the last accepted or final draft. Defaults encourage `PASS` / `IMPROVE:`-style replies; you can swap **`WithGeneratePrompt`** and **`WithCritiquePrompt`** for domain-specific writing or code review (see **reflection-02**).
+
+```go
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/reflect"
+)
+
+resolver := reflect.NewReflector(
+	reflect.WithMaxIterations(3),
+	// Optional: reflect.WithGeneratePrompt(...), reflect.WithCritiquePrompt(...)
+)
+
+agent := gentic.Agent{Resolver: resolver}
+result, err := agent.Run("Write a concise cover letter for a backend role.")
+// result.Observations — drafts; result.Thoughts — critiques; result.Output — final text
+```
+
+Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and **[reflection-02](./examples/simple/reflection-02)** (custom Go-focused generate/critique)—`go run ./examples/simple/reflection-01/main.go` and `reflection-02`.
+
 ## Memory
 
 **Memory** is optional **multi-turn** context for `gentic.Agent`. With **`Memory: nil`**, each **`Run`** is stateless. When you attach a **`gentic.Memory`**, the agent **loads** prior messages before the resolver runs, **enriches** `State.Input` with a `[Conversation History]` preamble (so the model can resolve “that city”), then **appends** the new user turn and assistant **`Output`** after a successful run.
@@ -147,7 +171,6 @@ _, err = agent.Run("What is the population of that city?") // prior turn is in S
 
 Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/with-memory](./examples/simple/with-memory)**—`go run ./examples/simple/with-memory/main.go`.
 
-
 ## Security Features
 
 🔒 **Production-ready security patterns** built-in:
@@ -156,24 +179,5 @@ Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/
 - Tools receive state but cannot access sensitive credentials
 - Metadata leak detection with warnings
 
-Pass **ambient context** with **`RunWithContext`**: anything you put in **`Metadata`** is available on **`state.Metadata`** for your steps, while **`state.SecureMetadata()`** exposes only **public** fields (keys starting with **`'_'`** are treated as private). ReAct can optionally warn when tool outputs look like they leak private metadata.
-
-```go
-import "github.com/daniel-dihardja/gentic/pkg/gentic"
-
-agent := gentic.Agent{Resolver: yourResolver}
-
-result, err := agent.RunWithContext(gentic.AgentInput{
-	Query: "What is the capital of Germany?",
-	Metadata: map[string]interface{}{
-		"user_id":      "user_12345",
-		"tenant_id":    "tenant_abc",
-		"request_id":   "req_xyz789",
-		"_api_key":     "secret-not-for-tools", // '_' prefix — private; use SecureMetadata() for safe reads
-	},
-})
-// Steps: use state.SecureMetadata().GetString("user_id") in tools — not raw Metadata for secrets
-```
-
-Minimal walkthrough: **[examples/applications/with-metadata](./examples/applications/with-metadata)** (`go run ./examples/applications/with-metadata/main.go`). Full rules, blocklists, and production patterns: [SECURITY_METADATA.md](SECURITY_METADATA.md) and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/).
+See [SECURITY_METADATA.md](SECURITY_METADATA.md) for rules and blocklists, and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/) for a production-oriented pattern.
 
