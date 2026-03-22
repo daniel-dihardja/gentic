@@ -14,6 +14,8 @@ Gentic implements five essential agentic AI patterns:
 
 Sections follow that order: **Intent Routing** → **Planning and Execution** → **Metadata / Ambient Context** → **ReAct (Reasoning & Acting)** → **Reflection**. After those five, **[Memory](#memory)** (optional multi-turn storage) and **[Security Features](#security-features)** describe agent-level capabilities that compose with any pattern.
 
+For **real-world scenarios**, see **[examples/advanced](./examples/advanced)** and **[examples/applications](./examples/applications)** (each folder has its own overview).
+
 ## Intent Routing
 
 Intent routing is the “front door” for specialized behavior: the model classifies what the user wants, Gentic records that label on the run, and the matching **flow** runs—so greetings, math questions, and everything else can each get their own prompts or steps without one giant system prompt.
