@@ -124,6 +124,28 @@ result, err := agent.Run("What is 347 × 19?")
 // result.Thoughts — reasoning turns; result.Observations — tool JSON; result.Output — final answer
 ```
 
+## Memory
+
+**Memory** is optional **multi-turn** context for `gentic.Agent`. With **`Memory: nil`**, each **`Run`** is stateless. When you attach a **`gentic.Memory`**, the agent **loads** prior messages before the resolver runs, **enriches** `State.Input` with a `[Conversation History]` preamble (so the model can resolve “that city”), then **appends** the new user turn and assistant **`Output`** after a successful run.
+
+Implement **`Memory`** yourself (`Append`, **`Messages`**, **`Clear`**) for a database or cache, or use **`NewInMemoryStorage()`** for a thread-safe, process-local store. Alternatively, **`RunWithContext(gentic.AgentInput{ Messages: ... })`** supplies a **Vercel AI SDK–compatible** message list directly; the last user message becomes the current query, and history is merged the same way for the run.
+
+```go
+import "github.com/daniel-dihardja/gentic/pkg/gentic"
+
+mem := gentic.NewInMemoryStorage()
+
+agent := gentic.Agent{
+	Resolver: yourResolver,
+	Memory:   mem,
+}
+
+_, err := agent.Run("What is the capital of France?")
+_, err = agent.Run("What is the population of that city?") // prior turn is in State.Input
+```
+
+Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/with-memory](./examples/simple/with-memory)**—`go run ./examples/simple/with-memory/main.go`.
+
 ## Security Features
 
 🔒 **Production-ready security patterns** built-in:
