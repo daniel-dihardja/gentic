@@ -7,7 +7,7 @@ Gentic is an ultra-lightweight agentic AI framework. It provides a minimal, comp
 Gentic implements five essential agentic AI patterns:
 
 - **Intent Routing** — Intelligently route requests to different agent strategies based on user intent
-- **Planning and Execution** — Break down complex tasks into actionable steps and execute them systematically
+- **Planning and Execution** — Break down complex tasks into actionable steps and execute them sequentially or in parallel.
 - **Metadata / Ambient Context** — Thread contextual information through agent execution for stateful interactions
 - **ReAct (Reasoning & Acting)** — Thought→Observation→Action loops that combine reasoning with tool use
 - **Reflection** — Enable agents to evaluate their work, identify mistakes, and improve iteratively
