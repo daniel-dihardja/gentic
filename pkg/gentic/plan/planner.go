@@ -28,17 +28,15 @@ serve`
 
 // Planner implements a pool-based planning flow.
 //
-// Three modes are available:
+// Two modes are available:
 //   - Static groups: the caller provides parallel-capable groups via WithStaticPlanGroups.
-//   - Static (flat): the caller provides a fixed ordered list of task IDs via WithStaticPlan (each becomes a single-element group).
 //   - LLM-based (default): an LLM reads the pool descriptions and the user's input,
 //     then selects and sequences the task IDs to execute (comma-separated IDs on a line = parallel group).
 //
 // Tasks within a group run concurrently; groups execute sequentially. The last observation becomes Output.
 type Planner struct {
 	pool         Pool
-	static       []string   // nil = not static mode; non-nil = flat static mode (each becomes a single-element group)
-	staticGroups [][]string // nil = not group mode; non-nil = explicit parallel groups (takes precedence over static)
+	staticGroups [][]string // nil = LLM mode; non-nil = static group mode
 	model        string
 	planPrompt   string
 }
@@ -51,16 +49,9 @@ func WithPool(tasks ...Task) Option {
 	return func(p *Planner) { p.pool = Pool(tasks) }
 }
 
-// WithStaticPlan switches the planner to static mode and fixes the execution
-// order to the provided task IDs. The LLM is not consulted for sequencing.
-// Each task ID runs sequentially in its own step (single-element group).
-func WithStaticPlan(ids ...string) Option {
-	return func(p *Planner) { p.static = ids }
-}
-
 // WithStaticPlanGroups switches the planner to static-group mode, where each
 // []string argument is a parallel wave. Tasks within a wave run concurrently;
-// waves execute in order. This option takes precedence over WithStaticPlan.
+// waves execute in order. The LLM is not consulted for sequencing.
 func WithStaticPlanGroups(groups ...[]string) Option {
 	return func(p *Planner) { p.staticGroups = groups }
 }
@@ -90,30 +81,18 @@ func NewPlanner(opts ...Option) *Planner {
 
 // Resolve returns the two-step flow: plan → execute.
 func (p *Planner) Resolve(_ *gentic.State) gentic.Flow {
-	switch {
-	case p.staticGroups != nil:
-		// Explicit parallel groups take precedence
+	if p.staticGroups != nil {
+		// Static groups: fixed execution plan with parallel support
 		return gentic.NewFlow(
 			staticPlanStep{groups: p.staticGroups},
 			executeStep{pool: p.pool},
 		)
-	case p.static != nil:
-		// Wrap each id in a single-element group for backward compatibility
-		groups := make([][]string, len(p.static))
-		for i, id := range p.static {
-			groups[i] = []string{id}
-		}
-		return gentic.NewFlow(
-			staticPlanStep{groups: groups},
-			executeStep{pool: p.pool},
-		)
-	default:
-		// LLM-based planning (default)
-		return gentic.NewFlow(
-			llmPlanStep{pool: p.pool, model: p.model, prompt: p.planPrompt},
-			executeStep{pool: p.pool},
-		)
 	}
+	// LLM-based planning (default)
+	return gentic.NewFlow(
+		llmPlanStep{pool: p.pool, model: p.model, prompt: p.planPrompt},
+		executeStep{pool: p.pool},
+	)
 }
 
 // ── staticPlanStep ────────────────────────────────────────────────────────────

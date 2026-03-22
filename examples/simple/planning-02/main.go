@@ -41,11 +41,14 @@ var taskPool = []plan.Task{
 func main() {
 	godotenv.Load()
 
-	// Static: fixed sequence, LLM does not choose steps.
+	// Static groups: fixed sequence with parallel support, LLM does not choose steps.
 	agent := gentic.Agent{
 		Resolver: plan.NewPlanner(
 			plan.WithPool(taskPool...),
-			plan.WithStaticPlan("fetch-preferences", "steep-tea"),
+			plan.WithStaticPlanGroups(
+				[]string{"fetch-preferences"},
+				[]string{"steep-tea"},
+			),
 		),
 	}
 

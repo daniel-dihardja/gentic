@@ -126,11 +126,18 @@ func buildResolver() gentic.IntentResolver {
 		// Use static plans to avoid needing API keys
 		schedulePln: plan.NewPlanner(
 			plan.WithPool(schedulingTasks()...),
-			plan.WithStaticPlan("fetch-availability", "create-meeting", "confirm-booking"),
+			plan.WithStaticPlanGroups(
+				[]string{"fetch-availability"},
+				[]string{"create-meeting"},
+				[]string{"confirm-booking"},
+			),
 		),
 		infoPln: plan.NewPlanner(
 			plan.WithPool(infoTasks()...),
-			plan.WithStaticPlan("fetch-details", "summarize"),
+			plan.WithStaticPlanGroups(
+				[]string{"fetch-details"},
+				[]string{"summarize"},
+			),
 		),
 	}
 }
