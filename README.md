@@ -99,6 +99,35 @@ result, err := agent.Run("Write a concise cover letter for a backend role.")
 
 Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and **[reflection-02](./examples/simple/reflection-02)** (custom Go-focused generate/critique)—`go run ./examples/simple/reflection-01/main.go` and `reflection-02`.
 
+## ReAct (Reasoning & Acting)
+
+ReAct interleaves **reasoning** with **tool use**: the model emits a structured turn (`Thought` / `Action` / `Action Input` …), Gentic runs the named tool, feeds the JSON result back as an **observation**, and repeats until the model answers with **`Final Answer:`** or **`WithMaxSteps`** is hit. **`result.Thoughts`** holds each full model reply; **`result.Observations`** records tool outputs (with the tool name as task ID); **`result.Output`** is the extracted final answer.
+
+Register tools with a name, description, JSON **input schema**, and either **`react.NewTool`** (input/output only) or **`react.NewToolWithState`** when the handler needs `*gentic.State` (for example to read ambient metadata). A **`react.ReactActor`** is another `IntentResolver` whose `Resolve` returns a single step that runs the whole loop.
+
+```go
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/react"
+)
+
+resolver := react.NewReactActor(
+	react.WithMaxSteps(10),
+	react.WithTools(
+		react.NewTool("calculator", "Adds two numbers", inputSchema, runCalculator),
+		// react.NewToolWithState("fetch_analytics", "...", schema, runWithMetadata),
+	),
+)
+
+agent := gentic.Agent{Resolver: resolver}
+result, err := agent.Run("What is 347 × 19?")
+// result.Thoughts — reasoning turns; result.Observations — tool JSON; result.Output — final answer
+```
+
+Define `inputSchema` and `runCalculator` (or use `NewToolWithState`) as in the linked example; the default system prompt expects **`Thought` / `Action` / `Action Input`** and a terminating **`Final Answer:`**.
+
+The **[react-with-analytics](./examples/applications/react-with-analytics)** app combines `NewToolWithState`, **`agent.RunWithContext`** (query + metadata), and optional **`WithValidateMetadataLeaks`**—`go run ./examples/applications/react-with-analytics/main.go`.
+
 ## Getting Started
 
 ### Examples
