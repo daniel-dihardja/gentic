@@ -44,6 +44,37 @@ result, err := agent.Run("What is 347 × 19?")
 
 The runnable sample wires each branch to a small LLM step with different system prompts—see **[examples/simple/intent-routing](./examples/simple/intent-routing)** (`go run ./examples/simple/intent-routing/main.go`).
 
+## Planning and Execution
+
+Planning separates **what to run** from **how each step works**. You build a **task pool**: each task has an ID, a human-readable description (the planner only sees those—not your implementations), and a function that runs on `*gentic.State` and can append **observations**. A **`plan.Planner`** is wired as the agent resolver and runs a fixed two-phase flow: build `state.ActionPlan`, then execute it wave by wave. Comma-separated task IDs on one line of the plan are one **parallel wave**; each line is a sequential step after the previous wave finishes. The final answer is taken from the **last observation**.
+
+**LLM planning (default):** the model picks a minimal sequence of task IDs from the pool for the user’s request. **Static planning:** you pass ordered waves with `WithStaticPlanGroups`—no planning call; useful for fixed pipelines or when you already know the shape (including parallel waves).
+
+```go
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/plan"
+)
+
+// LLM chooses which tasks to run and in what order (planning-01).
+llmResolver := plan.NewPlanner(plan.WithPool(taskPool...))
+
+// You define the waves—comma-separated IDs in one wave run concurrently (planning-02, planning-03).
+staticResolver := plan.NewPlanner(
+	plan.WithPool(taskPool...),
+	plan.WithStaticPlanGroups(
+		[]string{"fetch-preferences"},
+		[]string{"boil-water", "steep-tea"},
+	),
+)
+
+agent := gentic.Agent{Resolver: llmResolver} // or staticResolver
+result, err := agent.Run("How do I make a cup of tea?")
+// result.ActionPlan — waves of task IDs; result.Observations — merged results; result.Output — last observation
+```
+
+Step through the tea examples: **[planning-01](./examples/simple/planning-01)** (LLM plan), **[planning-02](./examples/simple/planning-02)** (static sequence), **[planning-03](./examples/simple/planning-03)** (static with a parallel wave)—`go run ./examples/simple/planning-01/main.go` (and `-02`, `-03`).
+
 ## Getting Started
 
 ### Examples
