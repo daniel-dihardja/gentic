@@ -81,7 +81,7 @@ func (m *MetadataAccessor) ContainsPrivateData(data map[string]interface{}) bool
 type State struct {
 	Input        string                 // original user request
 	Intent       string                 // resolved intent (optional, set by intent routers)
-	ActionPlan   []string               // ordered task IDs the agent will execute (set during planning)
+	ActionPlan   [][]string             // ordered task ID groups; each group is a parallel wave; tasks within a wave run concurrently (set during planning)
 	Thoughts     []string               // scratchpad for intermediate reasoning traces
 	Observations []Observation          // outputs collected after each action is executed
 	Output       string                 // final answer — set to the last observation after execution

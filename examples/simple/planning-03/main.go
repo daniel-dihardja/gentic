@@ -41,19 +41,30 @@ var taskPool = []plan.Task{
 func main() {
 	godotenv.Load()
 
+	// Static groups with parallel execution: boil-water and steep-tea run concurrently.
 	agent := gentic.Agent{
-		Resolver: plan.NewPlanner(plan.WithPool(taskPool...)),
+		Resolver: plan.NewPlanner(
+			plan.WithPool(taskPool...),
+			plan.WithStaticPlanGroups(
+				[]string{"fetch-preferences"},      // wave 1: sequential
+				[]string{"boil-water", "steep-tea"}, // wave 2: parallel
+			),
+		),
 	}
 
 	question := "How do I make a cup of tea?"
 	fmt.Printf("Question: %s\n\n", question)
+	fmt.Println("Mode: static groups with parallel execution")
+	fmt.Println("Wave 1: fetch-preferences")
+	fmt.Println("Wave 2: boil-water and steep-tea in parallel")
+	fmt.Println()
 
 	result, err := agent.Run(question)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("=== Action Plan (LLM-selected) ===")
+	fmt.Println("=== Action Plan (static groups with parallel) ===")
 	for i, group := range result.ActionPlan {
 		if len(group) == 1 {
 			fmt.Printf("  [%d] %s\n", i+1, group[0])

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/gentic/plan"
@@ -59,8 +60,12 @@ func main() {
 	}
 
 	fmt.Println("=== Action Plan (static) ===")
-	for i, id := range result.ActionPlan {
-		fmt.Printf("  [%d] %s\n", i+1, id)
+	for i, group := range result.ActionPlan {
+		if len(group) == 1 {
+			fmt.Printf("  [%d] %s\n", i+1, group[0])
+		} else {
+			fmt.Printf("  [%d] parallel: [%s]\n", i+1, strings.Join(group, ", "))
+		}
 	}
 
 	fmt.Println("\n=== Observations ===")
