@@ -124,34 +124,6 @@ result, err := agent.Run("What is 347 × 19?")
 // result.Thoughts — reasoning turns; result.Observations — tool JSON; result.Output — final answer
 ```
 
-Define `inputSchema` and `runCalculator` (or use `NewToolWithState`) as in the linked example; the default system prompt expects **`Thought` / `Action` / `Action Input`** and a terminating **`Final Answer:`**.
-
-The **[react-with-analytics](./examples/applications/react-with-analytics)** app combines `NewToolWithState`, **`agent.RunWithContext`** (query + metadata), and optional **`WithValidateMetadataLeaks`**—`go run ./examples/applications/react-with-analytics/main.go`.
-
-## Getting Started
-
-### Examples
-
-Gentic comes with organized, well-documented examples:
-
-- **[Simple Examples](./examples/simple)** — Learn individual patterns in isolation (intent routing, planning, reflection, ReAct)
-- **[Advanced Examples](./examples/advanced)** — See how patterns compose (intent+planning, nested ReAct in planning tasks)
-- **[Applications](./examples/applications)** — Production-ready reference implementations (content generation, analytics, metadata handling)
-
-Start with [Simple Examples](./examples/simple) if you're new to Gentic.
-
-### Quick Start
-
-```bash
-# Run a simple example
-go run ./examples/simple/intent-routing/main.go
-
-# Run an advanced example
-go run ./examples/advanced/support-ticket-handler/main.go
-```
-
-See [examples/README.md](./examples/README.md) for full overview and learning path.
-
 ## Security Features
 
 🔒 **Production-ready security patterns** built-in:
