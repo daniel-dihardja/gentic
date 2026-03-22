@@ -12,6 +12,38 @@ Gentic implements five essential agentic AI patterns:
 - **ReAct (Reasoning & Acting)** — Thought→Observation→Action loops that combine reasoning with tool use
 - **Metadata / Ambient Context** — Thread contextual information through agent execution for stateful interactions
 
+## Intent Routing
+
+Intent routing is the “front door” for specialized behavior: the model classifies what the user wants, Gentic records that label on the run, and the matching **flow** runs—so greetings, math questions, and everything else can each get their own prompts or steps without one giant system prompt.
+
+Define labels, attach a `gentic.Flow` per label (and a `Default` fallback), then hand the router to `gentic.Agent`. Each flow can be as small as one step that sets `s.Output` after calling your model:
+
+```go
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/intent"
+)
+
+resolver := intent.NewRouter("greeting", "math", "general").
+	On("greeting", gentic.NewFlow(RespondStep{
+		systemPrompt: "You are a warm, friendly assistant.",
+	})).
+	On("math", gentic.NewFlow(RespondStep{
+		systemPrompt: "You are a precise math tutor; show your working.",
+	})).
+	Default(gentic.NewFlow(RespondStep{
+		systemPrompt: "You are a helpful assistant.",
+	}))
+
+agent := gentic.Agent{Resolver: resolver}
+result, err := agent.Run("What is 347 × 19?")
+// result.Intent → "math"; result.Output → that flow’s reply
+```
+
+`RespondStep` here is any type that implements `gentic.Step` (the example uses one struct with a `systemPrompt` field and `Run` calling OpenAI chat).
+
+The runnable sample wires each branch to a small LLM step with different system prompts—see **[examples/simple/intent-routing](./examples/simple/intent-routing)** (`go run ./examples/simple/intent-routing/main.go`).
+
 ## Getting Started
 
 ### Examples
