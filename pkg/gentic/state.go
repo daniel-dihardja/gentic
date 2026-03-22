@@ -85,6 +85,7 @@ type State struct {
 	Thoughts     []string               // scratchpad for intermediate reasoning traces
 	Observations []Observation          // outputs collected after each action is executed
 	Output       string                 // final answer — set to the last observation after execution
+	Messages     []Message              // conversation history (Vercel AI SDK compatible format, optional)
 	Metadata     map[string]interface{} // context data (user_id, tenant_id, session info, etc.) - internal use
 }
 
