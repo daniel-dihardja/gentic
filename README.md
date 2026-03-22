@@ -155,4 +155,24 @@ result, err := agent.Run("What is 347 × 19?")
 - Metadata access control (public vs private keys)
 - Tools receive state but cannot access sensitive credentials
 - Metadata leak detection with warnings
-- See [SECURITY_METADATA.md](SECURITY_METADATA.md) for patterns and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/) for the production pattern
+
+Pass **ambient context** with **`RunWithContext`**: anything you put in **`Metadata`** is available on **`state.Metadata`** for your steps, while **`state.SecureMetadata()`** exposes only **public** fields (keys starting with **`'_'`** are treated as private). ReAct can optionally warn when tool outputs look like they leak private metadata.
+
+```go
+import "github.com/daniel-dihardja/gentic/pkg/gentic"
+
+agent := gentic.Agent{Resolver: yourResolver}
+
+result, err := agent.RunWithContext(gentic.AgentInput{
+	Query: "What is the capital of Germany?",
+	Metadata: map[string]interface{}{
+		"user_id":      "user_12345",
+		"tenant_id":    "tenant_abc",
+		"request_id":   "req_xyz789",
+		"_api_key":     "secret-not-for-tools", // '_' prefix — private; use SecureMetadata() for safe reads
+	},
+})
+// Steps: use state.SecureMetadata().GetString("user_id") in tools — not raw Metadata for secrets
+```
+
+Minimal walkthrough: **[examples/applications/with-metadata](./examples/applications/with-metadata)** (`go run ./examples/applications/with-metadata/main.go`). Full rules, blocklists, and production patterns: [SECURITY_METADATA.md](SECURITY_METADATA.md) and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/).
