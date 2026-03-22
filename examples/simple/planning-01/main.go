@@ -1,0 +1,67 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/plan"
+	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
+	"github.com/joho/godotenv"
+)
+
+var taskPool = []plan.Task{
+	plan.NewTask(plan.TaskConfig{
+		ID:          "fetch-preferences",
+		Description: "Fetch the user's tea preferences",
+		Function: func(s *gentic.State) error {
+			s.Observations = append(s.Observations, gentic.Observation{
+				TaskID:  "fetch-preferences",
+				Content: "User prefers green tea, no sugar.",
+			})
+			return nil
+		},
+	}),
+	plan.NewLLMTask(plan.LLMTaskConfig{
+		ID:           "boil-water",
+		Description:  "Explain how to boil water",
+		SystemPrompt: "Answer in 1-2 sentences only.",
+		Model:        openai.DefaultModel,
+		Provider:     openai.Provider{},
+	}),
+	plan.NewLLMTask(plan.LLMTaskConfig{
+		ID:           "steep-tea",
+		Description:  "Explain how to steep the tea bag",
+		SystemPrompt: "Answer in 1-2 sentences only.",
+		Model:        openai.DefaultModel,
+		Provider:     openai.Provider{},
+	}),
+}
+
+func main() {
+	godotenv.Load()
+
+	agent := gentic.Agent{
+		Resolver: plan.NewPlanner(plan.WithPool(taskPool...)),
+	}
+
+	question := "How do I make a cup of tea?"
+	fmt.Printf("Question: %s\n\n", question)
+
+	result, err := agent.Run(question)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("=== Action Plan (LLM-selected) ===")
+	for i, id := range result.ActionPlan {
+		fmt.Printf("  [%d] %s\n", i+1, id)
+	}
+
+	fmt.Println("\n=== Observations ===")
+	for i, obs := range result.Observations {
+		fmt.Printf("[%d] [%s] %s\n\n", i+1, obs.TaskID, obs.Content)
+	}
+
+	fmt.Println("=== Final Answer ===")
+	fmt.Println(result.Output)
+}

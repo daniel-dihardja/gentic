@@ -1,0 +1,93 @@
+# =========================
+# Binaries & build outputs
+# =========================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+build/
+
+# =========================
+# Go workspace
+# =========================
+go.work
+go.work.sum
+
+# =========================
+# Go modules
+# =========================
+vendor/
+
+# =========================
+# Logs & temp files
+# =========================
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# =========================
+# IDE & editor files
+# =========================
+
+# VS Code
+.vscode/
+
+# GoLand / IntelliJ
+.idea/
+
+# Vim
+*.swp
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Coverage reports
+# =========================
+coverage.out
+*.coverprofile
+coverage/
+
+# =========================
+# Test binaries
+# =========================
+*.test
+
+# =========================
+# Debug
+# =========================
+__debug_bin
+
+# =========================
+# Dependency directories
+# =========================
+# Uncomment if you don't want to commit vendor
+# vendor/
+
+# =========================
+# Docker (optional)
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Misc
+# =========================
+*.pid
+*.seed
