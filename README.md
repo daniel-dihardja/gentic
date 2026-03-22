@@ -75,6 +75,30 @@ result, err := agent.Run("How do I make a cup of tea?")
 
 Step through the tea examples: **[planning-01](./examples/simple/planning-01)** (LLM plan), **[planning-02](./examples/simple/planning-02)** (static sequence), **[planning-03](./examples/simple/planning-03)** (static with a parallel wave)—`go run ./examples/simple/planning-01/main.go` (and `-02`, `-03`).
 
+## Reflection
+
+Reflection adds a **generate → critique → refine** loop: one model pass produces a draft, another judges it against the original request. If the critic answers with exactly `PASS`, the loop stops; otherwise it feeds structured feedback into the next draft (up to a configurable cap). That keeps quality work from being “one shot” without hand-writing orchestration.
+
+A **`reflect.Reflector`** is used like other resolvers: it resolves to a single flow step that runs the whole loop. Drafts land in **`result.Observations`** (task ID `generate`), critiques in **`result.Thoughts`**, and **`result.Output`** is the last accepted or final draft. Defaults encourage `PASS` / `IMPROVE:`-style replies; you can swap **`WithGeneratePrompt`** and **`WithCritiquePrompt`** for domain-specific writing or code review (see **reflection-02**).
+
+```go
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/gentic/reflect"
+)
+
+resolver := reflect.NewReflector(
+	reflect.WithMaxIterations(3),
+	// Optional: reflect.WithGeneratePrompt(...), reflect.WithCritiquePrompt(...)
+)
+
+agent := gentic.Agent{Resolver: resolver}
+result, err := agent.Run("Write a concise cover letter for a backend role.")
+// result.Observations — drafts; result.Thoughts — critiques; result.Output — final text
+```
+
+Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and **[reflection-02](./examples/simple/reflection-02)** (custom Go-focused generate/critique)—`go run ./examples/simple/reflection-01/main.go` and `reflection-02`.
+
 ## Getting Started
 
 ### Examples
