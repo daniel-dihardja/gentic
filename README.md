@@ -1,6 +1,6 @@
 # Gentic
 
-**Gentic** is an ultra-lightweight agentic AI framework. It provides a minimal, composable set of patterns that enable complex agent behaviors without the bloat of heavy frameworks.
+Gentic is an ultra-lightweight agentic AI framework. It provides a minimal, composable set of patterns that enable complex agent behaviors without unnecessary overhead.
 
 ## Core Patterns
 
@@ -182,4 +182,3 @@ Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/
 - Metadata leak detection with warnings
 
 See [SECURITY_METADATA.md](SECURITY_METADATA.md) for rules and blocklists, and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/) for a production-oriented pattern.
-
