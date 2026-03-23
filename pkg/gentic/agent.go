@@ -1,15 +1,18 @@
 package gentic
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
 
 // AgentInput carries the query and optional metadata for an agent run.
 type AgentInput struct {
-	Query    string                 // simple string query (used if Messages is empty)
-	Messages []Message              // Vercel AI SDK compatible message history (alternative to Query)
-	Metadata map[string]interface{} // context data accessible to steps
+	Query        string                 // simple string query (used if Messages is empty)
+	Messages     []Message              // Vercel AI SDK compatible message history (alternative to Query)
+	Metadata     map[string]interface{} // context data accessible to steps
+	Model        string                 // LLM model to use for streaming (e.g. "gpt-4o-mini")
+	SystemPrompt string                 // system prompt for streaming calls
 }
 
 type Agent struct {
@@ -84,6 +87,77 @@ func (a Agent) RunWithContext(input AgentInput) (*State, error) {
 	}
 
 	return state, nil
+}
+
+// RunStream streams token-by-token output for a simple string input.
+// The caller must drain the returned channel fully or cancel ctx to avoid goroutine leaks.
+func (a Agent) RunStream(ctx context.Context, input string, sllm StreamingLLM) (<-chan StreamEvent, error) {
+	return a.StreamWithContext(ctx, AgentInput{Query: input}, sllm)
+}
+
+// StreamWithContext streams token-by-token output with structured input.
+// It skips the Flow/Resolver pipeline — streaming is a direct single-LLM call.
+// If Memory is set, the full assembled response is stored after the stream completes.
+func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm StreamingLLM) (<-chan StreamEvent, error) {
+	metadata := input.Metadata
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+
+	var query string
+	var allMessages []Message
+
+	if len(input.Messages) > 0 {
+		allMessages = input.Messages
+		for i := len(input.Messages) - 1; i >= 0; i-- {
+			if input.Messages[i].Role == "user" {
+				query = input.Messages[i].TextContent()
+				break
+			}
+		}
+	} else {
+		query = input.Query
+		if a.Memory != nil {
+			history, err := a.Memory.Messages()
+			if err == nil {
+				allMessages = history
+			}
+		}
+	}
+
+	enrichedInput := a.buildInputWithHistory(allMessages, query)
+
+	model := input.Model
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+
+	upstream, err := sllm.ChatStream(ctx, model, input.SystemPrompt, enrichedInput)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan StreamEvent, 64)
+
+	go func() {
+		defer close(out)
+		var sb strings.Builder
+		for event := range upstream {
+			if event.Token.Text != "" {
+				sb.WriteString(event.Token.Text)
+			}
+			out <- event
+			if event.Token.Done || event.Token.Error != nil {
+				break
+			}
+		}
+		if a.Memory != nil && query != "" && sb.Len() > 0 {
+			a.Memory.Append(NewUserMessage(query))
+			a.Memory.Append(NewAssistantMessage(sb.String()))
+		}
+	}()
+
+	return out, nil
 }
 
 // buildInputWithHistory constructs an enriched input string that includes conversation history.
