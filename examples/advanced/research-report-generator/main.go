@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -123,7 +124,7 @@ func analyzeFindings(input json.RawMessage) (json.RawMessage, error) {
 // Planning Tasks: Research for Each Report Section
 // ─────────────────────────────────────────────────────────────────────────────
 
-func researchExecutiveOverview(s *gentic.State) error {
+func researchExecutiveOverview(ctx context.Context, s *gentic.State) error {
 	researchTools := []react.Tool{
 		react.NewTool(
 			"research_topic",
@@ -160,12 +161,12 @@ func researchExecutiveOverview(s *gentic.State) error {
 	researchState.Observations = []gentic.Observation{}
 	researchState.Input = "Research the current market status and key statistics. Focus on: market size, adoption rates, growth projections, and investment trends."
 
-	flow := reactActor.Resolve(&researchState)
-	if err := flow.Run(&researchState); err != nil {
+	flow := reactActor.Resolve(ctx, &researchState)
+	if err := flow.Run(ctx, &researchState); err != nil {
 		return err
 	}
 
-	summary := fmt.Sprintf(`Executive Overview Research:
+	summary := `Executive Overview Research:
 
 Market Status:
 - Market experiencing rapid growth at 38.5% CAGR
@@ -174,7 +175,7 @@ Market Status:
 - Average ROI reported at 340% within 18 months
 
 Key Takeaway:
-Market is in inflection point with strong enterprise demand and proven ROI.`)
+Market is in inflection point with strong enterprise demand and proven ROI.`
 
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "research-overview",
@@ -183,7 +184,7 @@ Market is in inflection point with strong enterprise demand and proven ROI.`)
 	return nil
 }
 
-func researchMarketTrends(s *gentic.State) error {
+func researchMarketTrends(ctx context.Context, s *gentic.State) error {
 	researchTools := []react.Tool{
 		react.NewTool(
 			"research_topic",
@@ -216,8 +217,8 @@ func researchMarketTrends(s *gentic.State) error {
 	researchState.Observations = []gentic.Observation{}
 	researchState.Input = "Research current market trends including: competitive landscape, emerging technologies, vendor consolidation, and regulatory developments."
 
-	flow := reactActor.Resolve(&researchState)
-	if err := flow.Run(&researchState); err != nil {
+	flow := reactActor.Resolve(ctx, &researchState)
+	if err := flow.Run(ctx, &researchState); err != nil {
 		return err
 	}
 
@@ -250,7 +251,7 @@ func researchMarketTrends(s *gentic.State) error {
 	return nil
 }
 
-func researchCaseStudies(s *gentic.State) error {
+func researchCaseStudies(ctx context.Context, s *gentic.State) error {
 	researchTools := []react.Tool{
 		react.NewTool(
 			"find_case_studies",
@@ -283,8 +284,8 @@ func researchCaseStudies(s *gentic.State) error {
 	researchState.Observations = []gentic.Observation{}
 	researchState.Input = "Research real-world implementation case studies across different industries. Analyze success factors and ROI outcomes."
 
-	flow := reactActor.Resolve(&researchState)
-	if err := flow.Run(&researchState); err != nil {
+	flow := reactActor.Resolve(ctx, &researchState)
+	if err := flow.Run(ctx, &researchState); err != nil {
 		return err
 	}
 
@@ -321,7 +322,7 @@ Common Success Factors Identified:
 // Report Generation Task
 // ─────────────────────────────────────────────────────────────────────────────
 
-func generateReport(s *gentic.State) error {
+func generateReport(_ context.Context, s *gentic.State) error {
 	var observations []string
 	for _, obs := range s.Observations {
 		observations = append(observations, fmt.Sprintf("### %s\n%s", obs.TaskID, obs.Content))
@@ -404,18 +405,18 @@ type PlanningStep struct {
 	planner *plan.Planner
 }
 
-func (p PlanningStep) Run(s *gentic.State) error {
-	flow := p.planner.Resolve(s)
-	return flow.Run(s)
+func (p PlanningStep) Run(ctx context.Context, s *gentic.State) error {
+	flow := p.planner.Resolve(ctx, s)
+	return flow.Run(ctx, s)
 }
 
 type ReflectionStep struct {
 	reflector *reflect.Reflector
 }
 
-func (r ReflectionStep) Run(s *gentic.State) error {
-	flow := r.reflector.Resolve(s)
-	return flow.Run(s)
+func (r ReflectionStep) Run(ctx context.Context, s *gentic.State) error {
+	flow := r.reflector.Resolve(ctx, s)
+	return flow.Run(ctx, s)
 }
 
 type ResearchReportResolver struct {
@@ -423,7 +424,7 @@ type ResearchReportResolver struct {
 	reflector  *reflect.Reflector
 }
 
-func (r *ResearchReportResolver) Resolve(s *gentic.State) gentic.Flow {
+func (r *ResearchReportResolver) Resolve(_ context.Context, s *gentic.State) gentic.Flow {
 	return gentic.NewFlow(
 		PlanningStep{planner: r.planner},
 		ReflectionStep{reflector: r.reflector},

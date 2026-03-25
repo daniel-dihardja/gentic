@@ -1,6 +1,8 @@
 package reflect
 
 import (
+	"context"
+
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
 )
@@ -14,9 +16,10 @@ const defaultGeneratePrompt = `You are a skilled writer and analyst. Produce a h
 If you are given a previous draft and a critique, revise the draft to address every point raised.`
 
 const defaultCritiquePrompt = `You are a rigorous editor. Evaluate the draft below against the original request.
-If the draft fully and correctly addresses the request, reply with exactly: PASS
-Otherwise, reply with: IMPROVE: <concise bullet-point list of specific issues to fix>
-Do not add any other text before or after.`
+Respond with a single JSON object only (no markdown, no extra text).
+If the draft fully and correctly addresses the request: {"verdict":"PASS"}
+Otherwise: {"verdict":"IMPROVE","feedback":"<concise bullet-point issues as one string, newlines between items>"}
+Use verdict values exactly PASS or IMPROVE.`
 
 // Reflector implements a generate→critique→refine loop.
 // It satisfies gentic.IntentResolver and is used directly as an Agent resolver.
@@ -79,17 +82,25 @@ func NewReflector(opts ...Option) *Reflector {
 	return r
 }
 
+func loopStepFromReflector(r *Reflector) reflectionLoopStep {
+	return reflectionLoopStep{
+		llm:                 r.llm,
+		model:               r.model,
+		maxIterations:       r.maxIterations,
+		generatePrompt:      r.generatePrompt,
+		critiquePrompt:      r.critiquePrompt,
+		critiqueUserBuilder: r.critiqueUserBuilder,
+	}
+}
+
+// NewLoopStep returns a [gentic.Step] that runs the same generate→critique loop as [Reflector.Resolve],
+// so you can embed the loop in a larger [gentic.Flow] without nesting a full [gentic.Agent].
+func NewLoopStep(opts ...Option) gentic.Step {
+	return loopStepFromReflector(NewReflector(opts...))
+}
+
 // Resolve implements gentic.IntentResolver.
 // It returns a single-step flow containing the reflection loop.
-func (r *Reflector) Resolve(_ *gentic.State) gentic.Flow {
-	return gentic.NewFlow(
-		reflectionLoopStep{
-			llm:                 r.llm,
-			model:               r.model,
-			maxIterations:       r.maxIterations,
-			generatePrompt:      r.generatePrompt,
-			critiquePrompt:      r.critiquePrompt,
-			critiqueUserBuilder: r.critiqueUserBuilder,
-		},
-	)
+func (r *Reflector) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
+	return gentic.NewFlow(loopStepFromReflector(r))
 }

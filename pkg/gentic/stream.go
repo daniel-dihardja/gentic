@@ -13,6 +13,7 @@ type StreamToken struct {
 // only when Done == true.
 type StreamEvent struct {
 	Token            StreamToken
+	Activity         *ActivityEvent
 	PromptTokens     int
 	CompletionTokens int
 	FinishReason     string // "stop", "length", "error"

@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
 )
 
-func detect(llm gentic.LLM, input string, labels []string) (string, error) {
+func detect(ctx context.Context, llm gentic.LLM, input string, labels []string) (string, error) {
 	if llm == nil {
 		llm = openai.Provider{}
 	}
@@ -24,7 +25,7 @@ func detect(llm gentic.LLM, input string, labels []string) (string, error) {
 		strings.Join(labels, "\n- "),
 	)
 
-	content, err := llm.Chat(model, prompt, input)
+	content, err := llm.Chat(ctx, model, prompt, input)
 	if err != nil {
 		return "", err
 	}

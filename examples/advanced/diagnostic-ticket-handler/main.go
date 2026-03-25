@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -72,7 +73,7 @@ func checkDatabaseHealth(input json.RawMessage) (json.RawMessage, error) {
 // Planning Pattern: Task Pools
 // ─────────────────────────────────────────────────────────────────────────────
 
-func fetchCustomerInfo(s *gentic.State) error {
+func fetchCustomerInfo(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID: "fetch-customer",
 		Content: `Customer Info:
@@ -86,7 +87,7 @@ func fetchCustomerInfo(s *gentic.State) error {
 }
 
 // DiagnosticTask embeds ReAct within a planning task
-func runDiagnostics(s *gentic.State) error {
+func runDiagnostics(ctx context.Context, s *gentic.State) error {
 	// Define diagnostic tools for ReAct to use
 	diagnosticTools := []react.Tool{
 		react.NewTool(
@@ -164,8 +165,8 @@ Be thorough but concise in your findings.`
 
 	diagnosticState.Input = diagnosticPrompt
 
-	flow := reactActor.Resolve(&diagnosticState)
-	if err := flow.Run(&diagnosticState); err != nil {
+	flow := reactActor.Resolve(ctx, &diagnosticState)
+	if err := flow.Run(ctx, &diagnosticState); err != nil {
 		return err
 	}
 
@@ -202,7 +203,7 @@ Recommendations:
 	return nil
 }
 
-func createIncident(s *gentic.State) error {
+func createIncident(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID: "create-incident",
 		Content: `Incident Ticket Created:
@@ -216,7 +217,7 @@ func createIncident(s *gentic.State) error {
 	return nil
 }
 
-func notifyManagement(s *gentic.State) error {
+func notifyManagement(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID: "notify-management",
 		Content: `Management Notification:
@@ -280,9 +281,9 @@ type PlannerStep struct {
 	planner *plan.Planner
 }
 
-func (p PlannerStep) Run(s *gentic.State) error {
-	flow := p.planner.Resolve(s)
-	return flow.Run(s)
+func (p PlannerStep) Run(ctx context.Context, s *gentic.State) error {
+	flow := p.planner.Resolve(ctx, s)
+	return flow.Run(ctx, s)
 }
 
 func buildResolver() gentic.IntentResolver {

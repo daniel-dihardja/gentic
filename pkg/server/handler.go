@@ -60,17 +60,7 @@ func StreamHandler(runner *Runner) http.HandlerFunc {
 			return
 		}
 
-		events, err := runner.Stream(r.Context(), req)
-		if err != nil {
-			log.Printf("stream: %v", err)
-			b, mErr := json.Marshal(map[string]string{"error": err.Error()})
-			if mErr != nil {
-				log.Printf("sse marshal: %v", mErr)
-				return
-			}
-			sw.WriteData(b)
-			return
-		}
+		events := runner.Stream(r.Context(), req)
 
 		if err := sw.Drain(r.Context(), events); err != nil {
 			log.Printf("stream drain: %v", err)

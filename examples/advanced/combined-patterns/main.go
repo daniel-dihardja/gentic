@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -12,7 +13,7 @@ import (
 
 // ── Shared Fetch Tasks ─────────────────────────────────────────────────────────
 
-func fetchAvailability(s *gentic.State) error {
+func fetchAvailability(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "fetch-availability",
 		Content: "Available slots: 2pm, 3pm, 4pm tomorrow (March 22)",
@@ -20,7 +21,7 @@ func fetchAvailability(s *gentic.State) error {
 	return nil
 }
 
-func createMeeting(s *gentic.State) error {
+func createMeeting(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "create-meeting",
 		Content: "Meeting scheduled for 2pm tomorrow with John and Sarah.",
@@ -28,7 +29,7 @@ func createMeeting(s *gentic.State) error {
 	return nil
 }
 
-func fetchMeetingDetails(s *gentic.State) error {
+func fetchMeetingDetails(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "fetch-details",
 		Content: "Meeting: Team Sync, Time: 2pm-3pm, Attendees: You, John, Sarah, Alex. Location: Conference Room B. Topic: Q1 planning.",
@@ -38,7 +39,7 @@ func fetchMeetingDetails(s *gentic.State) error {
 
 // ── Task Pools ──────────────────────────────────────────────────────────────
 
-func confirmBooking(s *gentic.State) error {
+func confirmBooking(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "confirm-booking",
 		Content: "Great! Your meeting is booked for 2pm tomorrow. Calendar invites have been sent.",
@@ -46,7 +47,7 @@ func confirmBooking(s *gentic.State) error {
 	return nil
 }
 
-func summarizeDetails(s *gentic.State) error {
+func summarizeDetails(_ context.Context, s *gentic.State) error {
 	s.Observations = append(s.Observations, gentic.Observation{
 		TaskID:  "summarize",
 		Content: "Your Team Sync is tomorrow at 2pm in Conference Room B with 4 attendees. Main topic is Q1 planning.",
@@ -96,20 +97,20 @@ type CombinedResolver struct {
 	infoPln     *plan.Planner
 }
 
-func (c *CombinedResolver) Resolve(s *gentic.State) gentic.Flow {
+func (c *CombinedResolver) Resolve(ctx context.Context, s *gentic.State) gentic.Flow {
 	// Simple keyword-based intent detection
 	input := s.Input
 	if contains(input, "schedule", "book", "create", "set up") {
 		s.Intent = "schedule"
-		return c.schedulePln.Resolve(s)
+		return c.schedulePln.Resolve(ctx, s)
 	} else if contains(input, "what", "when", "where", "tell", "info", "details") {
 		s.Intent = "info"
-		return c.infoPln.Resolve(s)
+		return c.infoPln.Resolve(ctx, s)
 	}
 
 	// Default to info
 	s.Intent = "info"
-	return c.infoPln.Resolve(s)
+	return c.infoPln.Resolve(ctx, s)
 }
 
 func contains(s string, words ...string) bool {

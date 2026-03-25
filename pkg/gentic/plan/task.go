@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"context"
+
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 )
 
@@ -10,7 +12,7 @@ import (
 type Task struct {
 	ID          string
 	Description string
-	Function    func(*gentic.State) error
+	Function    func(context.Context, *gentic.State) error
 }
 
 // Pool is the set of available tasks the planner can choose from.
@@ -30,7 +32,7 @@ func (p Pool) lookup(id string) (Task, bool) {
 type TaskConfig struct {
 	ID          string
 	Description string
-	Function    func(*gentic.State) error
+	Function    func(context.Context, *gentic.State) error
 }
 
 // LLMTaskConfig holds the configuration for an LLM-backed task.
@@ -55,8 +57,8 @@ func NewLLMTask(cfg LLMTaskConfig) Task {
 	return Task{
 		ID:          cfg.ID,
 		Description: cfg.Description,
-		Function: func(s *gentic.State) error {
-			content, err := cfg.Provider.Chat(cfg.Model, cfg.SystemPrompt, s.Input)
+		Function: func(ctx context.Context, s *gentic.State) error {
+			content, err := cfg.Provider.Chat(ctx, cfg.Model, cfg.SystemPrompt, s.Input)
 			if err != nil {
 				return err
 			}

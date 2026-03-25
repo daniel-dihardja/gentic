@@ -18,9 +18,9 @@ func NewRunner(agent gentic.Agent, sllm gentic.StreamingLLM) *Runner {
 }
 
 // Invoke runs the agent for a single invoke request (batch completion).
-func (r *Runner) Invoke(_ context.Context, req InvokeRequest) (*InvokeResponse, error) {
+func (r *Runner) Invoke(ctx context.Context, req InvokeRequest) (*InvokeResponse, error) {
 	input := req.AgentInput()
-	state, err := r.agent.RunWithContext(input)
+	state, err := r.agent.RunWithContext(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,6 @@ func (r *Runner) Invoke(_ context.Context, req InvokeRequest) (*InvokeResponse, 
 }
 
 // Stream uses the same Resolver → Flow pipeline as Invoke.
-func (r *Runner) Stream(ctx context.Context, req InvokeRequest) (<-chan gentic.StreamEvent, error) {
-	input := req.AgentInput()
-	return r.agent.StreamWithContext(ctx, input, r.sllm)
+func (r *Runner) Stream(ctx context.Context, req InvokeRequest) <-chan gentic.StreamEvent {
+	return r.agent.StreamWithContext(ctx, req.AgentInput(), r.sllm)
 }

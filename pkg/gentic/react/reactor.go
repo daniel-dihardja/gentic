@@ -1,6 +1,7 @@
 package react
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
@@ -101,7 +102,7 @@ func NewReactActor(opts ...Option) *ReactActor {
 
 // Resolve implements gentic.IntentResolver.
 // It returns a single-step flow containing the ReAct loop.
-func (r *ReactActor) Resolve(_ *gentic.State) gentic.Flow {
+func (r *ReactActor) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
 	return gentic.NewFlow(
 		reactLoopStep{
 			llm:                   r.llm,

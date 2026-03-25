@@ -23,7 +23,7 @@ type Agent struct {
 // Run executes the agent with a simple string input.
 // Metadata is initialized as empty. Use RunWithContext for custom metadata.
 func (a Agent) Run(input string) (*State, error) {
-	return a.RunWithContext(AgentInput{Query: input})
+	return a.RunWithContext(context.Background(), AgentInput{Query: input})
 }
 
 // preparedRun holds state built from AgentInput plus the raw user query for memory.
@@ -73,13 +73,14 @@ func (a Agent) prepareState(input AgentInput) preparedRun {
 // RunWithContext executes the agent with structured input including optional metadata.
 // If Memory is set and conversation history is available, it will be prepended to the input.
 // Metadata is accessible to all steps via state.Metadata.
-func (a Agent) RunWithContext(input AgentInput) (*State, error) {
+// The context is passed to the resolver and every step for cancellation and deadlines.
+func (a Agent) RunWithContext(ctx context.Context, input AgentInput) (*State, error) {
 	pr := a.prepareState(input)
 	state := pr.state
 
-	flow := a.Resolver.Resolve(state)
+	flow := a.Resolver.Resolve(ctx, state)
 
-	if err := flow.Run(state); err != nil {
+	if err := flow.Run(ctx, state); err != nil {
 		return nil, err
 	}
 
@@ -93,7 +94,7 @@ func (a Agent) RunWithContext(input AgentInput) (*State, error) {
 
 // RunStream streams token-by-token output for a simple string input.
 // The caller must drain the returned channel fully or cancel ctx to avoid goroutine leaks.
-func (a Agent) RunStream(ctx context.Context, input string, sllm StreamingLLM) (<-chan StreamEvent, error) {
+func (a Agent) RunStream(ctx context.Context, input string, sllm StreamingLLM) <-chan StreamEvent {
 	return a.StreamWithContext(ctx, AgentInput{Query: input}, sllm)
 }
 
@@ -101,27 +102,15 @@ func (a Agent) RunStream(ctx context.Context, input string, sllm StreamingLLM) (
 // It uses the same Resolver → Flow pipeline as RunWithContext; flows that include a
 // StreamingStep delegate to the provider stream; otherwise output is wrapped as a synthetic stream.
 // If Memory is set, the full assembled response is stored after the stream completes.
-func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm StreamingLLM) (<-chan StreamEvent, error) {
+func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm StreamingLLM) <-chan StreamEvent {
 	pr := a.prepareState(input)
 	state := pr.state
 
-	flow := a.Resolver.Resolve(state)
-
-	var upstream <-chan StreamEvent
-	var err error
-	if flow.IsEmpty() {
-		// Backward compatibility: empty flow (e.g. chat-server directResolver) streams
-		// one LLM call without steps, using AgentInput model/system prompt.
-		upstream, err = a.directLLMStream(ctx, input, state, sllm)
-	} else {
-		upstream, err = flow.Stream(ctx, state, sllm)
-	}
-	if err != nil {
-		return nil, err
-	}
+	flow := a.Resolver.Resolve(ctx, state)
+	upstream := flow.Stream(ctx, state, sllm)
 
 	if a.Memory == nil || pr.query == "" {
-		return upstream, nil
+		return upstream
 	}
 
 	out := make(chan StreamEvent, 64)
@@ -143,16 +132,7 @@ func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm Str
 		}
 	}()
 
-	return out, nil
-}
-
-// directLLMStream is the legacy streaming path when Resolve returns an empty Flow.
-func (a Agent) directLLMStream(ctx context.Context, input AgentInput, state *State, sllm StreamingLLM) (<-chan StreamEvent, error) {
-	model := input.Model
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
-	return sllm.ChatStream(ctx, model, input.SystemPrompt, state.Input)
+	return out
 }
 
 // buildInputWithHistory constructs an enriched input string that includes conversation history.

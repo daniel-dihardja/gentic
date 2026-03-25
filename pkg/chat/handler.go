@@ -62,13 +62,7 @@ func Handler(cfg Config) http.Handler {
 			SystemPrompt: cfg.SystemPrompt,
 		}
 
-		ch, err := cfg.Agent.StreamWithContext(r.Context(), agentInput, cfg.StreamingLLM)
-		if err != nil {
-			errFrame, _ := json.Marshal(map[string]string{"error": err.Error()})
-			fmt.Fprintf(w, "3:%s\n", errFrame)
-			flusher.Flush()
-			return
-		}
+		ch := cfg.Agent.StreamWithContext(r.Context(), agentInput, cfg.StreamingLLM)
 
 		var promptTokens, completionTokens int
 		finishReason := "stop"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -79,7 +80,7 @@ func main() {
 
 	// Pass analyticsId as ambient metadata
 	// Use '_' prefix for truly sensitive data you want to protect from tool output
-	result, err := agent.RunWithContext(gentic.AgentInput{
+	result, err := agent.RunWithContext(context.Background(), gentic.AgentInput{
 		Query: "What is the bounce rate for our product? Also multiply it by 2 to see what double would be.",
 		Metadata: map[string]interface{}{
 			"analyticsId":        "analytics_001",  // Public: safe for tools to use

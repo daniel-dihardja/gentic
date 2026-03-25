@@ -1,6 +1,7 @@
 package reflect
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -20,21 +21,28 @@ type ReflectLoopParams struct {
 	ReflectionSystemPrompt   string
 	GenerationPrompt         string
 	BuildReflectionUser      func(draft string) string
+	// OnIteration is called at the start of each loop iteration (before the generation Chat for that iteration).
+	// current is 1-based; total is MaxIterations+1 (iterations 0..MaxIterations).
+	OnIteration func(ctx context.Context, current, total int)
 }
 
 // RunReflectLoop runs generate → critique → refine with PASS / IMPROVE parsing.
 // It is used when the default [Reflector] flow (state.Input-based generation) is not sufficient.
-func RunReflectLoop(p ReflectLoopParams) (string, error) {
+func RunReflectLoop(ctx context.Context, p ReflectLoopParams) (string, error) {
 	var draft string
 	var feedbackBullets []string
 
+	totalIterations := p.MaxIterations + 1
 	for iteration := 0; iteration <= p.MaxIterations; iteration++ {
+		if p.OnIteration != nil {
+			p.OnIteration(ctx, iteration+1, totalIterations)
+		}
 		var err error
 		if iteration == 0 {
-			draft, err = p.LLM.Chat(p.Model, p.GenerationSystemPrompt, p.GenerationPrompt)
+			draft, err = p.LLM.Chat(ctx, p.Model, p.GenerationSystemPrompt, p.GenerationPrompt)
 		} else {
 			fb := strings.Join(feedbackBullets, "\n")
-			draft, err = p.LLM.Chat(p.Model, p.GenerationSystemPrompt, buildRevisionPrompt(p.GenerationPrompt, draft, fb))
+			draft, err = p.LLM.Chat(ctx, p.Model, p.GenerationSystemPrompt, buildRevisionPrompt(p.GenerationPrompt, draft, fb))
 		}
 		if err != nil {
 			return "", err
@@ -45,7 +53,7 @@ func RunReflectLoop(p ReflectLoopParams) (string, error) {
 		}
 
 		refUser := p.BuildReflectionUser(draft)
-		raw, err := p.LLM.Chat(p.Model, p.ReflectionSystemPrompt, refUser)
+		raw, err := p.LLM.Chat(ctx, p.Model, p.ReflectionSystemPrompt, refUser)
 		if err != nil {
 			return "", err
 		}

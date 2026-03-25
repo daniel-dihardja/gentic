@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -90,7 +91,7 @@ func main() {
 	}
 
 	fmt.Println("Input with conversation history...")
-	state4, err := agentVerscel.RunWithContext(versionInput)
+	state4, err := agentVerscel.RunWithContext(context.Background(), versionInput)
 	if err != nil {
 		log.Fatal(err)
 	}

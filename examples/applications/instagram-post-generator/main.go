@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -46,7 +47,7 @@ func main() {
 
 	// Step 4: Run the agent with public metadata only
 	// Private credentials (API keys, DB passwords, auth tokens) stay in the service
-	result, err := agent.RunWithContext(gentic.AgentInput{
+	result, err := agent.RunWithContext(context.Background(), gentic.AgentInput{
 		Query: "Create an Instagram post for today's sales data highlighting what customers loved.",
 		Metadata: map[string]interface{}{
 			// Public metadata - safe to pass to tools

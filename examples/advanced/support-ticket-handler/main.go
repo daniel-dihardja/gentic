@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ import (
 // Tool Implementations (used by tasks)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func fetchCustomerInfo(s *gentic.State) error {
+func fetchCustomerInfo(_ context.Context, s *gentic.State) error {
 	info := `Customer Info:
 - Account: Acme Corp
 - Tier: Enterprise
@@ -37,7 +38,7 @@ func fetchCustomerInfo(s *gentic.State) error {
 	return nil
 }
 
-func checkServiceStatus(s *gentic.State) error {
+func checkServiceStatus(_ context.Context, s *gentic.State) error {
 	status := `Service Status:
 - API: Operational (99.95% uptime)
 - Dashboard: Operational
@@ -51,7 +52,7 @@ func checkServiceStatus(s *gentic.State) error {
 	return nil
 }
 
-func searchKnowledgeBase(s *gentic.State) error {
+func searchKnowledgeBase(_ context.Context, s *gentic.State) error {
 	// Determine what to search based on input context
 	input := strings.ToLower(s.Input)
 	var results string
@@ -76,7 +77,7 @@ Solution: Clear browser cache. Check JavaScript console for errors. Try incognit
 	return nil
 }
 
-func analyzeImpact(s *gentic.State) error {
+func analyzeImpact(_ context.Context, s *gentic.State) error {
 	impact := `Impact Assessment:
 - Scope: Production environment
 - Affected customers: Estimated 5-10
@@ -90,7 +91,7 @@ func analyzeImpact(s *gentic.State) error {
 	return nil
 }
 
-func createIncidentTicket(s *gentic.State) error {
+func createIncidentTicket(_ context.Context, s *gentic.State) error {
 	ticket := `Incident Ticket Created:
 - Ticket: INC-2024-001
 - Severity: P1 (Critical)
@@ -105,7 +106,7 @@ func createIncidentTicket(s *gentic.State) error {
 	return nil
 }
 
-func createBugReport(s *gentic.State) error {
+func createBugReport(_ context.Context, s *gentic.State) error {
 	ticket := `Bug Report Created:
 - Ticket: BUG-2024-456
 - Priority: P2 (High)
@@ -120,7 +121,7 @@ func createBugReport(s *gentic.State) error {
 	return nil
 }
 
-func createFeatureRequest(s *gentic.State) error {
+func createFeatureRequest(_ context.Context, s *gentic.State) error {
 	ticket := `Feature Request Submitted:
 - Ticket: FR-2024-789
 - Category: API Enhancement
@@ -229,9 +230,9 @@ type PlannerStep struct {
 	planner *plan.Planner
 }
 
-func (p PlannerStep) Run(s *gentic.State) error {
-	flow := p.planner.Resolve(s)
-	return flow.Run(s)
+func (p PlannerStep) Run(ctx context.Context, s *gentic.State) error {
+	flow := p.planner.Resolve(ctx, s)
+	return flow.Run(ctx, s)
 }
 
 func buildResolver() gentic.IntentResolver {

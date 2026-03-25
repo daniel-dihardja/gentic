@@ -1,6 +1,7 @@
 package react
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -22,7 +23,7 @@ type reactLoopStep struct {
 	validateMetadataLeaks bool
 }
 
-func (s reactLoopStep) Run(state *gentic.State) error {
+func (s reactLoopStep) Run(ctx context.Context, state *gentic.State) error {
 	toolMap := make(map[string]Tool)
 	for _, tool := range s.tools {
 		toolMap[tool.Name] = tool
@@ -35,7 +36,7 @@ func (s reactLoopStep) Run(state *gentic.State) error {
 		fmt.Printf("[react] step %d/%d — reasoning...\n", step+1, s.maxSteps)
 
 		// ── Get LLM response ────────────────────────────────────────────────
-		response, err := s.llm.Chat(s.model, s.systemPrompt, userContent)
+		response, err := s.llm.Chat(ctx, s.model, s.systemPrompt, userContent)
 		if err != nil {
 			return fmt.Errorf("react: step %d: %w", step+1, err)
 		}

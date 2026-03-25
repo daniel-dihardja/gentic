@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -39,6 +40,7 @@ type Planner struct {
 	staticGroups [][]string // nil = LLM mode; non-nil = static group mode
 	model        string
 	planPrompt   string
+	llm          gentic.LLM
 }
 
 // Option configures a Planner.
@@ -67,11 +69,21 @@ func WithPlanPrompt(prompt string) Option {
 	return func(p *Planner) { p.planPrompt = prompt }
 }
 
+// WithLLM sets the LLM used for LLM-based planning. Defaults to [openai.Provider].
+func WithLLM(llm gentic.LLM) Option {
+	return func(p *Planner) {
+		if llm != nil {
+			p.llm = llm
+		}
+	}
+}
+
 // NewPlanner creates a Planner ready to use as a gentic.Agent resolver.
 func NewPlanner(opts ...Option) *Planner {
 	p := &Planner{
 		model:      openai.DefaultModel,
 		planPrompt: defaultPlanPrompt,
+		llm:        openai.Provider{},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -80,7 +92,7 @@ func NewPlanner(opts ...Option) *Planner {
 }
 
 // Resolve returns the two-step flow: plan → execute.
-func (p *Planner) Resolve(_ *gentic.State) gentic.Flow {
+func (p *Planner) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
 	if p.staticGroups != nil {
 		// Static groups: fixed execution plan with parallel support
 		return gentic.NewFlow(
@@ -90,7 +102,7 @@ func (p *Planner) Resolve(_ *gentic.State) gentic.Flow {
 	}
 	// LLM-based planning (default)
 	return gentic.NewFlow(
-		llmPlanStep{pool: p.pool, model: p.model, prompt: p.planPrompt},
+		llmPlanStep{pool: p.pool, model: p.model, prompt: p.planPrompt, llm: p.llm},
 		executeStep{pool: p.pool},
 	)
 }
@@ -102,7 +114,7 @@ func (p *Planner) Resolve(_ *gentic.State) gentic.Flow {
 // Each inner []string is a parallel wave; tasks within a wave run concurrently.
 type staticPlanStep struct{ groups [][]string }
 
-func (s staticPlanStep) Run(state *gentic.State) error {
+func (s staticPlanStep) Run(_ context.Context, state *gentic.State) error {
 	state.ActionPlan = s.groups
 	fmt.Printf("Plan (static): %v\n", s.groups)
 	return nil
@@ -117,9 +129,15 @@ type llmPlanStep struct {
 	pool   Pool
 	model  string
 	prompt string
+	llm    gentic.LLM
 }
 
-func (l llmPlanStep) Run(state *gentic.State) error {
+func (l llmPlanStep) Run(ctx context.Context, state *gentic.State) error {
+	llm := l.llm
+	if llm == nil {
+		llm = openai.Provider{}
+	}
+
 	var menu strings.Builder
 	menu.WriteString("Available tasks:\n")
 	for _, t := range l.pool {
@@ -127,19 +145,14 @@ func (l llmPlanStep) Run(state *gentic.State) error {
 	}
 
 	fmt.Print("Planning (LLM)...")
-	resp, err := openai.Chat(openai.ChatCompletionRequest{
-		Model: l.model,
-		Messages: []openai.ChatMessage{
-			{Role: "system", Content: l.prompt},
-			{Role: "user", Content: menu.String() + "\nUser request: " + state.Input},
-		},
-	})
+	user := menu.String() + "\nUser request: " + state.Input
+	content, err := llm.Chat(ctx, l.model, l.prompt, user)
 	if err != nil {
 		return err
 	}
 
 	// Parse response: each line is a sequential step; comma-separated IDs on a line run in parallel
-	for _, line := range strings.Split(resp.Choices[0].Message.Content, "\n") {
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -166,7 +179,7 @@ func (l llmPlanStep) Run(state *gentic.State) error {
 // After all waves complete, Output is set to the last observation.
 type executeStep struct{ pool Pool }
 
-func (e executeStep) Run(state *gentic.State) error {
+func (e executeStep) Run(ctx context.Context, state *gentic.State) error {
 	for waveIdx, group := range state.ActionPlan {
 		// Fast path: single-task group runs sequentially with no goroutine overhead
 		if len(group) == 1 {
@@ -177,7 +190,7 @@ func (e executeStep) Run(state *gentic.State) error {
 				continue
 			}
 			fmt.Printf("Executing [wave %d] %s...\n", waveIdx+1, task.ID)
-			if err := task.Function(state); err != nil {
+			if err := task.Function(ctx, state); err != nil {
 				return fmt.Errorf("task %q: %w", id, err)
 			}
 			continue
@@ -208,7 +221,7 @@ func (e executeStep) Run(state *gentic.State) error {
 				localState.Observations = nil
 				fmt.Printf("Executing [wave %d, parallel %d/%d] %s...\n",
 					waveIdx+1, idx+1, len(group), t.ID)
-				err := t.Function(&localState)
+				err := t.Function(ctx, &localState)
 				ch <- result{index: idx, observations: localState.Observations, err: err}
 			}(i, task, id)
 		}

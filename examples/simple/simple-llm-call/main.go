@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
@@ -10,8 +11,8 @@ import (
 
 type AskStep struct{}
 
-func (a AskStep) Run(s *gentic.State) error {
-	resp, err := openai.Chat(openai.ChatCompletionRequest{
+func (a AskStep) Run(ctx context.Context, s *gentic.State) error {
+	resp, err := openai.ChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: "gpt-4o-mini",
 		Messages: []openai.ChatMessage{
 			{Role: "user", Content: s.Input},
@@ -27,7 +28,7 @@ func (a AskStep) Run(s *gentic.State) error {
 
 type MyResolver struct{}
 
-func (r MyResolver) Resolve(s *gentic.State) gentic.Flow {
+func (r MyResolver) Resolve(_ context.Context, s *gentic.State) gentic.Flow {
 	return gentic.NewFlow(
 		AskStep{},
 	)

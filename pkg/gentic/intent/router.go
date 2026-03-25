@@ -1,6 +1,8 @@
 package intent
 
 import (
+	"context"
+
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
 )
@@ -47,8 +49,8 @@ func (r *Router) Default(flow gentic.Flow) *Router {
 }
 
 // Resolve implements gentic.IntentResolver.
-func (r *Router) Resolve(s *gentic.State) gentic.Flow {
-	intent, err := detect(r.llm, s.Input, r.labels)
+func (r *Router) Resolve(ctx context.Context, s *gentic.State) gentic.Flow {
+	intent, err := detect(ctx, r.llm, s.Input, r.labels)
 	if err != nil || intent == "" {
 		return r.fallback
 	}

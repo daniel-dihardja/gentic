@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,7 +15,7 @@ var taskPool = []plan.Task{
 	plan.NewTask(plan.TaskConfig{
 		ID:          "fetch-preferences",
 		Description: "Fetch the user's tea preferences",
-		Function: func(s *gentic.State) error {
+		Function: func(_ context.Context, s *gentic.State) error {
 			s.Observations = append(s.Observations, gentic.Observation{
 				TaskID:  "fetch-preferences",
 				Content: "User prefers green tea, no sugar.",

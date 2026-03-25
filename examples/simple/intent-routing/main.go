@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
@@ -14,8 +15,8 @@ type RespondStep struct {
 	systemPrompt string
 }
 
-func (r RespondStep) Run(s *gentic.State) error {
-	resp, err := openai.Chat(openai.ChatCompletionRequest{
+func (r RespondStep) Run(ctx context.Context, s *gentic.State) error {
+	resp, err := openai.ChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: "gpt-4o-mini",
 		Messages: []openai.ChatMessage{
 			{Role: "system", Content: r.systemPrompt},
