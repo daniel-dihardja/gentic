@@ -5,10 +5,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
 )
 
-func detect(input string, labels []string) (string, error) {
+func detect(llm gentic.LLM, input string, labels []string) (string, error) {
+	if llm == nil {
+		llm = openai.Provider{}
+	}
+
 	model := os.Getenv("INTENT_MODEL")
 	if model == "" {
 		model = openai.DefaultModel
@@ -19,20 +24,10 @@ func detect(input string, labels []string) (string, error) {
 		strings.Join(labels, "\n- "),
 	)
 
-	resp, err := openai.Chat(openai.ChatCompletionRequest{
-		Model: model,
-		Messages: []openai.ChatMessage{
-			{Role: "system", Content: prompt},
-			{Role: "user", Content: input},
-		},
-	})
+	content, err := llm.Chat(model, prompt, input)
 	if err != nil {
 		return "", err
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("intent: openai returned no choices")
-	}
-
-	return strings.TrimSpace(strings.ToLower(resp.Choices[0].Message.Content)), nil
+	return strings.TrimSpace(strings.ToLower(content)), nil
 }

@@ -1,6 +1,9 @@
 package intent
 
-import "github.com/daniel-dihardja/gentic/pkg/gentic"
+import (
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
+)
 
 // compile-time check that *Router satisfies gentic.IntentResolver
 var _ gentic.IntentResolver = (*Router)(nil)
@@ -10,14 +13,25 @@ type Router struct {
 	labels   []string
 	routes   map[string]gentic.Flow
 	fallback gentic.Flow
+	llm      gentic.LLM
 }
 
 // NewRouter creates a Router that will classify input into one of the given labels.
+// The default LLM is openai.Provider; override with WithLLM for tests or alternate providers.
 func NewRouter(labels ...string) *Router {
 	return &Router{
 		labels: labels,
 		routes: make(map[string]gentic.Flow),
+		llm:    openai.Provider{},
 	}
+}
+
+// WithLLM sets the classifier LLM (non-nil replaces the default).
+func (r *Router) WithLLM(llm gentic.LLM) *Router {
+	if llm != nil {
+		r.llm = llm
+	}
+	return r
 }
 
 // On registers a Flow for a specific label.
@@ -34,7 +48,7 @@ func (r *Router) Default(flow gentic.Flow) *Router {
 
 // Resolve implements gentic.IntentResolver.
 func (r *Router) Resolve(s *gentic.State) gentic.Flow {
-	intent, err := detect(s.Input, r.labels)
+	intent, err := detect(r.llm, s.Input, r.labels)
 	if err != nil || intent == "" {
 		return r.fallback
 	}

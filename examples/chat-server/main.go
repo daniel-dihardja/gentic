@@ -10,9 +10,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// directResolver routes every input to a single LLM step via the streaming path.
-// The Flow/Resolver pipeline is bypassed by StreamWithContext, so this resolver
-// is only needed to satisfy the Agent struct — it is never called during streaming.
+// directResolver returns an empty Flow so StreamWithContext uses the direct LLM
+// stream path (single ChatStream call with AgentInput model/system prompt).
 type directResolver struct{}
 
 func (directResolver) Resolve(_ *gentic.State) gentic.Flow {
