@@ -21,11 +21,12 @@ Do not add any other text before or after.`
 // Reflector implements a generate→critique→refine loop.
 // It satisfies gentic.IntentResolver and is used directly as an Agent resolver.
 type Reflector struct {
-	llm            gentic.LLM
-	model          string
-	maxIterations  int
-	generatePrompt string
-	critiquePrompt string
+	llm                 gentic.LLM
+	model               string
+	maxIterations       int
+	generatePrompt      string
+	critiquePrompt      string
+	critiqueUserBuilder func(input, draft string) string
 }
 
 // Option configures a Reflector.
@@ -56,6 +57,13 @@ func WithCritiquePrompt(prompt string) Option {
 	return func(r *Reflector) { r.critiquePrompt = prompt }
 }
 
+// WithCritiqueUserBuilder overrides how the critique user prompt is assembled.
+// fn receives (input, draft) and returns the full user content for the critique LLM call.
+// When nil, the default is Original request + Draft (see reflectionLoopStep).
+func WithCritiqueUserBuilder(fn func(input, draft string) string) Option {
+	return func(r *Reflector) { r.critiqueUserBuilder = fn }
+}
+
 // NewReflector creates a Reflector ready to use as a gentic.Agent resolver.
 func NewReflector(opts ...Option) *Reflector {
 	r := &Reflector{
@@ -76,11 +84,12 @@ func NewReflector(opts ...Option) *Reflector {
 func (r *Reflector) Resolve(_ *gentic.State) gentic.Flow {
 	return gentic.NewFlow(
 		reflectionLoopStep{
-			llm:            r.llm,
-			model:          r.model,
-			maxIterations:  r.maxIterations,
-			generatePrompt: r.generatePrompt,
-			critiquePrompt: r.critiquePrompt,
+			llm:                 r.llm,
+			model:               r.model,
+			maxIterations:       r.maxIterations,
+			generatePrompt:      r.generatePrompt,
+			critiquePrompt:      r.critiquePrompt,
+			critiqueUserBuilder: r.critiqueUserBuilder,
 		},
 	)
 }

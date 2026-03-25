@@ -1,6 +1,10 @@
 package gentic
 
-import "strings"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // Observation holds the output of a single task execution.
 type Observation struct {
@@ -32,6 +36,34 @@ func (m *MetadataAccessor) GetString(key string) string {
 		}
 	}
 	return ""
+}
+
+// GetID returns a metadata value coerced to a string ID (string / int / int64 / float64 from JSON).
+func (m *MetadataAccessor) GetID(key string) (string, error) {
+	val, ok := m.Get(key)
+	if !ok {
+		return "", fmt.Errorf("metadata key %q not found or not accessible", key)
+	}
+	return CoerceID(val)
+}
+
+// CoerceID normalizes values commonly found in JSON-decoded metadata into a string ID.
+func CoerceID(v interface{}) (string, error) {
+	switch x := v.(type) {
+	case int64:
+		return strconv.FormatInt(x, 10), nil
+	case int:
+		return strconv.Itoa(x), nil
+	case float64:
+		return strconv.FormatInt(int64(x), 10), nil
+	case string:
+		if x == "" {
+			return "", fmt.Errorf("empty id")
+		}
+		return x, nil
+	default:
+		return "", fmt.Errorf("unsupported id type %T", v)
+	}
 }
 
 // Keys returns all public metadata keys (those not starting with '_').

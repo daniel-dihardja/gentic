@@ -1,0 +1,52 @@
+package server
+
+import (
+	"encoding/json"
+
+	"github.com/daniel-dihardja/gentic/pkg/gentic"
+)
+
+// InvokeRequest is the JSON body for POST /invoke and POST /invoke/stream.
+type InvokeRequest struct {
+	Message          string          `json:"message"`
+	ThreadID         string          `json:"thread_id"`
+	AnalyticsID      *int64          `json:"analytics_id"`
+	LocationID       *int64          `json:"location_id"`
+	DateStart        *string         `json:"date_start"`
+	DateEnd          *string         `json:"date_end"`
+	NationalHolidays json.RawMessage `json:"national_holidays,omitempty"`
+}
+
+// AgentInput returns [gentic.AgentInput] with query and mapped metadata.
+func (req InvokeRequest) AgentInput() gentic.AgentInput {
+	meta := map[string]interface{}{
+		"thread_id": req.ThreadID,
+	}
+	if req.AnalyticsID != nil {
+		meta["analytics_id"] = *req.AnalyticsID
+	}
+	if req.LocationID != nil {
+		meta["location_id"] = *req.LocationID
+	}
+	if req.DateStart != nil {
+		meta["date_start"] = *req.DateStart
+	}
+	if req.DateEnd != nil {
+		meta["date_end"] = *req.DateEnd
+	}
+	if len(req.NationalHolidays) > 0 {
+		meta["national_holidays"] = string(req.NationalHolidays)
+	}
+	return gentic.AgentInput{
+		Query:    req.Message,
+		Metadata: meta,
+	}
+}
+
+// InvokeResponse is the JSON response for POST /invoke.
+type InvokeResponse struct {
+	OK     bool   `json:"ok"`
+	Output string `json:"output,omitempty"`
+	Intent string `json:"intent,omitempty"`
+	Error  string `json:"error,omitempty"`
+}

@@ -12,11 +12,12 @@ import (
 // Each critique is appended to state.Thoughts.
 // state.Output is set to the last accepted (PASS) or final draft.
 type reflectionLoopStep struct {
-	llm            gentic.LLM
-	model          string
-	maxIterations  int
-	generatePrompt string
-	critiquePrompt string
+	llm                 gentic.LLM
+	model               string
+	maxIterations       int
+	generatePrompt      string
+	critiquePrompt      string
+	critiqueUserBuilder func(input, draft string) string
 }
 
 func (s reflectionLoopStep) Run(state *gentic.State) error {
@@ -41,6 +42,9 @@ func (s reflectionLoopStep) Run(state *gentic.State) error {
 
 		// ── Critique ────────────────────────────────────────────────────────
 		critiqueInput := fmt.Sprintf("Original request:\n%s\n\nDraft:\n%s", state.Input, draft)
+		if s.critiqueUserBuilder != nil {
+			critiqueInput = s.critiqueUserBuilder(state.Input, draft)
+		}
 		fmt.Printf("[reflect] iteration %d/%d — critiquing...\n", i+1, s.maxIterations)
 
 		critiqueRaw, err := s.llm.Chat(s.model, s.critiquePrompt, critiqueInput)
