@@ -127,3 +127,19 @@ type State struct {
 func (s *State) SecureMetadata() *MetadataAccessor {
 	return &MetadataAccessor{data: s.Metadata}
 }
+
+// SetMetadata sets a metadata key, initializing Metadata if nil.
+func (s *State) SetMetadata(key string, val interface{}) {
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]interface{})
+	}
+	s.Metadata[key] = val
+}
+
+// DeleteMetadata removes a metadata key. It is a no-op if Metadata is nil.
+func (s *State) DeleteMetadata(key string) {
+	if s.Metadata == nil {
+		return
+	}
+	delete(s.Metadata, key)
+}

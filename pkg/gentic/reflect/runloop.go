@@ -21,6 +21,9 @@ type ReflectLoopParams struct {
 	ReflectionSystemPrompt   string
 	GenerationPrompt         string
 	BuildReflectionUser      func(draft string) string
+	// BuildRevisionPrompt builds the user message for refinement iterations (iteration >= 1).
+	// If nil, a generic domain-neutral default is used.
+	BuildRevisionPrompt func(originalGenerationPrompt, previousDraft, feedback string) string
 	// OnIteration is called at the start of each loop iteration (before the generation Chat for that iteration).
 	// current is 1-based; total is MaxIterations+1 (iterations 0..MaxIterations).
 	OnIteration func(ctx context.Context, current, total int)
@@ -42,7 +45,11 @@ func RunReflectLoop(ctx context.Context, p ReflectLoopParams) (string, error) {
 			draft, err = p.LLM.Chat(ctx, p.Model, p.GenerationSystemPrompt, p.GenerationPrompt)
 		} else {
 			fb := strings.Join(feedbackBullets, "\n")
-			draft, err = p.LLM.Chat(ctx, p.Model, p.GenerationSystemPrompt, buildRevisionPrompt(p.GenerationPrompt, draft, fb))
+			rev := p.BuildRevisionPrompt
+			if rev == nil {
+				rev = defaultRevisionPrompt
+			}
+			draft, err = p.LLM.Chat(ctx, p.Model, p.GenerationSystemPrompt, rev(p.GenerationPrompt, draft, fb))
 		}
 		if err != nil {
 			return "", err
@@ -70,21 +77,22 @@ func RunReflectLoop(ctx context.Context, p ReflectLoopParams) (string, error) {
 	return draft, nil
 }
 
-func buildRevisionPrompt(originalGenerationPrompt, previousSummary, feedback string) string {
-	return fmt.Sprintf(`You are a senior restaurant marketing strategist. Revise the location summary below based on specific reviewer feedback.
+// defaultRevisionPrompt is the generic refinement prompt when [ReflectLoopParams.BuildRevisionPrompt] is nil.
+func defaultRevisionPrompt(originalGenerationPrompt, previousDraft, feedback string) string {
+	return fmt.Sprintf(`Revise the draft below according to the reviewer feedback. Preserve the intent and structure of the original task unless the feedback explicitly asks for a different format.
 
 %s
 
 ---
-Previous draft (to be improved):
+Previous draft:
 %s
 
 Reviewer feedback — address every point:
 %s
 
-Write the improved version now, keeping the same four-section structure (**Venue Identity**, **Audience Persona**, **Traffic & Timing**, **Content & Tone Signals**).`,
+Write the improved version now.`,
 		originalGenerationPrompt,
-		previousSummary,
+		previousDraft,
 		feedback,
 	)
 }
