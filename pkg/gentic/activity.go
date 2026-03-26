@@ -67,6 +67,15 @@ func (n *Notifier) Notify(step string, status ActivityStatus, label string, opts
 	n.ch <- StreamEvent{Activity: &ev}
 }
 
+// EmitData sends an auxiliary named payload on the stream (e.g. planning artifact JSON).
+// Safe when n or n.ch is nil (e.g. Invoke path without streaming).
+func (n *Notifier) EmitData(name string, payload interface{}) {
+	if n == nil || n.ch == nil {
+		return
+	}
+	n.ch <- StreamEvent{DataName: name, DataPayload: payload}
+}
+
 type notifierCtxKey struct{}
 
 // WithNotifier attaches a Notifier to ctx for use inside steps.

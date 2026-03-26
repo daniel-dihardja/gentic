@@ -2,13 +2,15 @@ package server
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 )
 
 // InvokeRequest is the JSON body for POST /invoke and POST /invoke/stream.
 type InvokeRequest struct {
-	Message          string          `json:"message"`
+	Message          string                 `json:"message"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
 	ThreadID         string          `json:"thread_id"`
 	AnalyticsID      *int64          `json:"analytics_id"`
 	LocationID       *int64          `json:"location_id"`
@@ -19,6 +21,12 @@ type InvokeRequest struct {
 
 // AgentInput returns [gentic.AgentInput] with query and mapped metadata.
 func (req InvokeRequest) AgentInput() gentic.AgentInput {
+	if len(req.Metadata) > 0 && strings.TrimSpace(req.Message) != "" {
+		return gentic.AgentInput{
+			Query:    req.Message,
+			Metadata: req.Metadata,
+		}
+	}
 	meta := map[string]interface{}{
 		"thread_id": req.ThreadID,
 	}

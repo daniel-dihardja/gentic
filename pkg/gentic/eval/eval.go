@@ -6,19 +6,20 @@ import (
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 )
 
-// StepTrace is one executed step captured during an eval run (name + timing + error).
+// StepTrace is one executed step captured during an eval run (timing, error, per-step eval results).
 type StepTrace struct {
-	Name     string
-	Duration time.Duration
-	ErrMsg   string
+	Name        string
+	Duration    time.Duration
+	Err         error
+	EvalResults []EvalResult
 }
 
 // Trace is the full record of one agent invocation for scoring and debugging.
 type Trace struct {
 	Input    string
 	Intent   string
-	Steps    []StepTrace
 	Output   string
+	Steps    []StepTrace
 	Duration time.Duration
 	Err      error
 }
@@ -31,7 +32,7 @@ type Score struct {
 	Reason string
 }
 
-// Scorer evaluates a trace (e.g. intent match, substring in output).
+// Scorer evaluates a full [Trace] (flow-level assertions).
 type Scorer interface {
 	Score(t *Trace) Score
 }

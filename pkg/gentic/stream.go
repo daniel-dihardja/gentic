@@ -14,6 +14,9 @@ type StreamToken struct {
 type StreamEvent struct {
 	Token            StreamToken
 	Activity         *ActivityEvent
+	// DataName / DataPayload are optional auxiliary payloads (e.g. planning JSON for SSE).
+	DataName    string
+	DataPayload interface{}
 	PromptTokens     int
 	CompletionTokens int
 	FinishReason     string // "stop", "length", "error"

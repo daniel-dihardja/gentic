@@ -3,12 +3,11 @@ package eval
 import (
 	"context"
 	"sync"
-	"time"
 )
 
 type recorderCtxKey struct{}
 
-// WithRecorder attaches a Recorder to ctx so steps can record spans via [Record].
+// WithRecorder attaches a Recorder to ctx for [WrapWithEval] and [Runner].
 func WithRecorder(ctx context.Context, r *Recorder) context.Context {
 	if r == nil {
 		return ctx
@@ -41,27 +40,27 @@ func (r *Recorder) Steps() []StepTrace {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]StepTrace, len(r.steps))
-	copy(out, r.steps)
+	for i, st := range r.steps {
+		out[i] = cloneStepTrace(st)
+	}
 	return out
 }
 
-// RecordStep appends one step trace. Safe when r is nil (no-op).
-func (r *Recorder) RecordStep(name string, start time.Time, err error) {
+// Record appends one complete step trace (typically built by [WrapWithEval]). Safe when r is nil (no-op).
+func (r *Recorder) Record(t StepTrace) {
 	if r == nil {
 		return
 	}
-	st := StepTrace{Name: name, Duration: time.Since(start)}
-	if err != nil {
-		st.ErrMsg = err.Error()
-	}
 	r.mu.Lock()
-	r.steps = append(r.steps, st)
-	r.mu.Unlock()
+	defer r.mu.Unlock()
+	r.steps = append(r.steps, cloneStepTrace(t))
 }
 
-// Record is a convenience for defer: Record(ctx, "step_name", start, err) from named error returns.
-func Record(ctx context.Context, stepName string, start time.Time, err error) {
-	if r := RecorderFromContext(ctx); r != nil {
-		r.RecordStep(stepName, start, err)
+func cloneStepTrace(t StepTrace) StepTrace {
+	out := t
+	if len(t.EvalResults) > 0 {
+		out.EvalResults = make([]EvalResult, len(t.EvalResults))
+		copy(out.EvalResults, t.EvalResults)
 	}
+	return out
 }
