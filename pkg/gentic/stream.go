@@ -9,11 +9,18 @@ type StreamToken struct {
 	Error error  // non-nil if the stream broke
 }
 
+// DataEvent carries arbitrary typed payloads on the stream (e.g. planning snapshots for the UI).
+type DataEvent struct {
+	Type    string
+	Payload any
+}
+
 // StreamEvent wraps a StreamToken with usage metadata populated
 // only when Done == true.
 type StreamEvent struct {
 	Token            StreamToken
 	Activity         *ActivityEvent
+	Data             *DataEvent
 	PromptTokens     int
 	CompletionTokens int
 	FinishReason     string // "stop", "length", "error"

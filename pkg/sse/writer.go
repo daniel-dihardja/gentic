@@ -76,6 +76,13 @@ func (sw *Writer) Drain(ctx context.Context, ch <-chan gentic.StreamEvent) error
 				}
 				sw.WriteData(b)
 			}
+			if ev.Data != nil {
+				b, err := json.Marshal(map[string]any{ev.Data.Type: ev.Data.Payload})
+				if err != nil {
+					return err
+				}
+				sw.WriteData(b)
+			}
 			if ev.Token.Text != "" {
 				b, err := json.Marshal(map[string]string{"delta": ev.Token.Text})
 				if err != nil {

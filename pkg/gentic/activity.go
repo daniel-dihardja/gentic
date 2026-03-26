@@ -67,6 +67,15 @@ func (n *Notifier) Notify(step string, status ActivityStatus, label string, opts
 	n.ch <- StreamEvent{Activity: &ev}
 }
 
+// EmitData sends a custom payload keyed by dataType on the stream (e.g. "planning" → UI artifact).
+// Safe when n or n.ch is nil.
+func (n *Notifier) EmitData(dataType string, payload any) {
+	if n == nil || n.ch == nil {
+		return
+	}
+	n.ch <- StreamEvent{Data: &DataEvent{Type: dataType, Payload: payload}}
+}
+
 type notifierCtxKey struct{}
 
 // WithNotifier attaches a Notifier to ctx for use inside steps.
