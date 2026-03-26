@@ -1,41 +1,23 @@
 package server
 
 import (
-	"encoding/json"
-
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 )
 
 // InvokeRequest is the JSON body for POST /invoke and POST /invoke/stream.
+// Applications may extend the contract with domain-specific fields by decoding
+// their own request type and mapping into [gentic.AgentInput.Metadata] before
+// building an InvokeRequest with Message and Metadata.
 type InvokeRequest struct {
-	Message          string          `json:"message"`
-	ThreadID         string          `json:"thread_id"`
-	AnalyticsID      *int64          `json:"analytics_id"`
-	LocationID       *int64          `json:"location_id"`
-	DateStart        *string         `json:"date_start"`
-	DateEnd          *string         `json:"date_end"`
-	NationalHolidays json.RawMessage `json:"national_holidays,omitempty"`
+	Message  string                 `json:"message"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// AgentInput returns [gentic.AgentInput] with query and mapped metadata.
+// AgentInput returns [gentic.AgentInput] with query and metadata.
 func (req InvokeRequest) AgentInput() gentic.AgentInput {
-	meta := map[string]interface{}{
-		"thread_id": req.ThreadID,
-	}
-	if req.AnalyticsID != nil {
-		meta["analytics_id"] = *req.AnalyticsID
-	}
-	if req.LocationID != nil {
-		meta["location_id"] = *req.LocationID
-	}
-	if req.DateStart != nil {
-		meta["date_start"] = *req.DateStart
-	}
-	if req.DateEnd != nil {
-		meta["date_end"] = *req.DateEnd
-	}
-	if len(req.NationalHolidays) > 0 {
-		meta["national_holidays"] = string(req.NationalHolidays)
+	meta := req.Metadata
+	if meta == nil {
+		meta = make(map[string]interface{})
 	}
 	return gentic.AgentInput{
 		Query:    req.Message,
