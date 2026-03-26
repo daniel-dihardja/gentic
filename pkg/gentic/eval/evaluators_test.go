@@ -35,6 +35,44 @@ func TestMetadataKeyExists(t *testing.T) {
 	}
 }
 
+func TestMetadataSliceNotEmpty(t *testing.T) {
+	ctx := context.Background()
+	s := &gentic.State{Metadata: map[string]interface{}{"k": []string{"a"}}}
+	r := MetadataSliceNotEmpty{Key: "k"}.Evaluate(ctx, s)
+	if !r.Pass {
+		t.Fatalf("want pass, got %+v", r)
+	}
+	s.Metadata["k"] = []string{}
+	r = MetadataSliceNotEmpty{Key: "k"}.Evaluate(ctx, s)
+	if r.Pass {
+		t.Fatal("want fail on empty slice")
+	}
+	s.Metadata["k"] = 42
+	r = MetadataSliceNotEmpty{Key: "k"}.Evaluate(ctx, s)
+	if r.Pass {
+		t.Fatal("want fail on non-slice")
+	}
+}
+
+func TestMetadataFunc(t *testing.T) {
+	ctx := context.Background()
+	r := MetadataFunc{
+		Fn: func(s *gentic.State) EvalResult {
+			if s == nil {
+				return EvalResult{Name: "x", Pass: false}
+			}
+			return EvalResult{Name: "x", Pass: true, Score: 1}
+		},
+	}.Evaluate(ctx, &gentic.State{})
+	if !r.Pass {
+		t.Fatalf("want pass, got %+v", r)
+	}
+	r = MetadataFunc{Fn: nil}.Evaluate(ctx, &gentic.State{})
+	if r.Pass {
+		t.Fatal("want fail on nil Fn")
+	}
+}
+
 func TestMetadataMatchesJSON(t *testing.T) {
 	ctx := context.Background()
 	s := &gentic.State{Metadata: map[string]interface{}{

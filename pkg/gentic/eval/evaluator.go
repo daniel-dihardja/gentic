@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -91,6 +92,57 @@ func (m MetadataKeyExists) Evaluate(_ context.Context, s *gentic.State) EvalResu
 		return EvalResult{Name: name, Pass: false, Reason: fmt.Sprintf("key %q is nil", m.Key)}
 	}
 	return EvalResult{Name: name, Pass: true, Score: 1}
+}
+
+// MetadataSliceNotEmpty passes when Metadata[Key] is a non-nil slice with length > 0.
+type MetadataSliceNotEmpty struct {
+	Key  string
+	Name string // optional; defaults to "metadata_slice_not_empty"
+}
+
+func (m MetadataSliceNotEmpty) Evaluate(_ context.Context, s *gentic.State) EvalResult {
+	name := m.Name
+	if name == "" {
+		name = "metadata_slice_not_empty"
+	}
+	if s == nil {
+		return EvalResult{Name: name, Pass: false, Reason: "nil state"}
+	}
+	if m.Key == "" {
+		return EvalResult{Name: name, Pass: false, Reason: "empty key"}
+	}
+	if s.Metadata == nil {
+		return EvalResult{Name: name, Pass: false, Reason: "metadata is nil"}
+	}
+	val, ok := s.Metadata[m.Key]
+	if !ok || val == nil {
+		return EvalResult{Name: name, Pass: false, Reason: fmt.Sprintf("missing or nil key %q", m.Key)}
+	}
+	rv := reflect.ValueOf(val)
+	if rv.Kind() != reflect.Slice {
+		return EvalResult{Name: name, Pass: false, Reason: fmt.Sprintf("key %q is not a slice", m.Key)}
+	}
+	if rv.Len() == 0 {
+		return EvalResult{Name: name, Pass: false, Reason: fmt.Sprintf("key %q slice is empty", m.Key)}
+	}
+	return EvalResult{Name: name, Pass: true, Score: 1}
+}
+
+// MetadataFunc runs a custom check on state. Fn must be non-nil.
+type MetadataFunc struct {
+	Name string
+	Fn   func(s *gentic.State) EvalResult
+}
+
+func (m MetadataFunc) Evaluate(_ context.Context, s *gentic.State) EvalResult {
+	name := m.Name
+	if name == "" {
+		name = "metadata_func"
+	}
+	if m.Fn == nil {
+		return EvalResult{Name: name, Pass: false, Reason: "nil Fn"}
+	}
+	return m.Fn(s)
 }
 
 // MetadataMatchesJSON checks that Metadata[Key] exists, JSON-marshals it, unmarshals to an object,
