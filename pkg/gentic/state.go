@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Observation holds the output of a single task execution.
@@ -119,17 +120,45 @@ type State struct {
 	Output       string                 // final answer — set to the last observation after execution
 	Messages     []Message              // conversation history (Vercel AI SDK compatible format, optional)
 	Metadata     map[string]interface{} // context data (user_id, tenant_id, session info, etc.) - internal use
+	metaMu       sync.Mutex             // serializes Metadata reads/writes (e.g. [Parallel] steps)
 }
 
 // SecureMetadata returns a restricted accessor for public metadata only.
 // Use this when passing the state to tools or external systems.
 // Private keys (starting with '_' or in the sensitive blocklist) are not accessible.
+// The returned map is a snapshot copy so callers can read without holding locks.
 func (s *State) SecureMetadata() *MetadataAccessor {
-	return &MetadataAccessor{data: s.Metadata}
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+	if s.Metadata == nil {
+		return &MetadataAccessor{data: nil}
+	}
+	snap := make(map[string]interface{}, len(s.Metadata))
+	for k, v := range s.Metadata {
+		snap[k] = v
+	}
+	return &MetadataAccessor{data: snap}
+}
+
+// GetMetadata returns a single metadata value with the same visibility rules as direct map access.
+// Prefer this over reading [State.Metadata] when steps may run concurrently (e.g. [Parallel]).
+func (s *State) GetMetadata(key string) (interface{}, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+	if s.Metadata == nil {
+		return nil, false
+	}
+	v, ok := s.Metadata[key]
+	return v, ok
 }
 
 // SetMetadata sets a metadata key, initializing Metadata if nil.
 func (s *State) SetMetadata(key string, val interface{}) {
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
 	if s.Metadata == nil {
 		s.Metadata = make(map[string]interface{})
 	}
@@ -138,6 +167,8 @@ func (s *State) SetMetadata(key string, val interface{}) {
 
 // DeleteMetadata removes a metadata key. It is a no-op if Metadata is nil.
 func (s *State) DeleteMetadata(key string) {
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
 	if s.Metadata == nil {
 		return
 	}

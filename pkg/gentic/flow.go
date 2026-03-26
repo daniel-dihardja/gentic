@@ -1,6 +1,9 @@
 package gentic
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 type Flow struct {
 	steps []Step
@@ -30,6 +33,41 @@ func If(predicate func(*State) bool, thenStep Step) Step {
 	return conditionalStep{predicate: predicate, then: thenStep}
 }
 
+// Parallel runs multiple steps concurrently. Each step must only coordinate through [State]
+// using [State.SetMetadata], [State.GetMetadata], and [State.DeleteMetadata] so map access stays safe.
+func Parallel(steps ...Step) Step {
+	return parallelStep{steps: steps}
+}
+
+type parallelStep struct {
+	steps []Step
+}
+
+func (p parallelStep) Run(ctx context.Context, s *State) error {
+	if len(p.steps) == 0 {
+		return nil
+	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	for _, step := range p.steps {
+		st := step
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := st.Run(ctx, s); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return firstErr
+}
+
 type conditionalStep struct {
 	predicate func(*State) bool
 	then      Step
@@ -47,7 +85,7 @@ func (c conditionalStep) Run(ctx context.Context, s *State) error {
 // is wrapped as a short synthetic stream (text + done).
 // Errors are sent as StreamEvent{Token: StreamToken{Error: err}}.
 func (f Flow) Stream(ctx context.Context, s *State, sllm StreamingLLM) <-chan StreamEvent {
-	out := make(chan StreamEvent, 16)
+	out := make(chan StreamEvent, 256)
 	notifier := &Notifier{ch: out}
 	ctx = WithNotifier(ctx, notifier)
 
