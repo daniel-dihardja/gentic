@@ -122,3 +122,13 @@ func ParseReflectionVerdict(raw string) (pass bool, feedback []string) {
 	}
 	return false, []string{s}
 }
+
+// RunStructuredReflectLoop runs [RunReflectLoop] then parses the final draft with parse.
+func RunStructuredReflectLoop[T any](ctx context.Context, p ReflectLoopParams, parse func(draft string) (T, error)) (T, error) {
+	draft, err := RunReflectLoop(ctx, p)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return parse(draft)
+}

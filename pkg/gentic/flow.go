@@ -80,6 +80,45 @@ func (c conditionalStep) Run(ctx context.Context, s *State) error {
 	return c.then.Run(ctx, s)
 }
 
+// Parallel runs each step with the same [State] concurrently. The first error returned by any step wins.
+// Steps must not perform conflicting concurrent writes to [State].
+func Parallel(steps ...Step) Step {
+	return parallelStep{steps: steps}
+}
+
+type parallelStep struct {
+	steps []Step
+}
+
+func (p parallelStep) Run(ctx context.Context, s *State) error {
+	if len(p.steps) == 0 {
+		return nil
+	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(p.steps))
+	for _, st := range p.steps {
+		if st == nil {
+			continue
+		}
+		st := st
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := st.Run(ctx, s); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Stream runs steps until a StreamingStep is found; that step owns the stream.
 // If no StreamingStep exists, synchronous steps run in order and the final output
 // is wrapped as a short synthetic stream (text + done).

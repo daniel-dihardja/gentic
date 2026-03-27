@@ -174,3 +174,12 @@ func (s *State) DeleteMetadata(key string) {
 	}
 	delete(s.Metadata, key)
 }
+
+// GetMetadata returns the value for key and whether it was present.
+func (s *State) GetMetadata(key string) (interface{}, bool) {
+	if s == nil || s.Metadata == nil {
+		return nil, false
+	}
+	v, ok := s.Metadata[key]
+	return v, ok
+}
