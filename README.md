@@ -1,6 +1,6 @@
 # Gentic
 
-Gentic is an ultra-lightweight agentic AI framework. It provides a minimal, composable set of patterns that enable complex agent behaviors without unnecessary overhead.
+Gentic is an lightweight agentic AI framework. It provides a minimal, composable set of patterns that enable complex agent behaviors without unnecessary overhead.
 
 ## Core Patterns
 
