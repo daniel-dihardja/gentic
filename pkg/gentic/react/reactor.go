@@ -15,24 +15,7 @@ var _ gentic.IntentResolver = (*ReactActor)(nil)
 
 const defaultMaxSteps = 10
 
-const defaultSystemPrompt = `You are a helpful assistant that uses tools to gather information and answer questions.
-
-When you need information, follow this format exactly:
-Thought: <brief reasoning about what you need>
-Action: <tool_name>
-Action Input: <valid JSON matching the tool's input_schema>
-
-Once you have enough information to answer, output:
-Thought: <final reasoning>
-Final Answer: <your complete answer>
-
-Important:
-- Use only the tools listed in "Available Tools"
-- Action Input must be valid JSON matching the tool's input_schema (use {} when the schema has no properties)
-- Keep thoughts brief (1-2 sentences)
-- Don't include the word 'Action:' or 'Action Input:' in your Thought
-- Only use one Action per response
-- You may use markdown bold around labels (e.g. **Action:**) as well as plain Action: — both are parsed`
+const defaultSystemPrompt = `You are a helpful assistant. Use the provided tools to gather information and complete tasks. When you have enough information to fully answer the user's request, respond directly without calling any tools.`
 
 // Tool represents a callable action the ReAct agent can take.
 type Tool struct {
@@ -47,6 +30,7 @@ type Tool struct {
 // It satisfies gentic.IntentResolver and is used directly as an Agent resolver.
 type ReactActor struct {
 	llm                    gentic.LLM
+	toolCallingLLM         gentic.ToolCallingLLM
 	model                  string
 	maxSteps               int
 	systemPrompt           string
@@ -100,6 +84,11 @@ func WithToolTimeout(d time.Duration) Option {
 	return func(r *ReactActor) { r.toolTimeout = d }
 }
 
+// WithToolCallingLLM sets a tool-calling LLM provider. Prefer this if your LLM supports native tool calling.
+func WithToolCallingLLM(tcllm gentic.ToolCallingLLM) Option {
+	return func(r *ReactActor) { r.toolCallingLLM = tcllm }
+}
+
 // NewReactActor creates a ReactActor ready to use as a gentic.Agent resolver.
 func NewReactActor(opts ...Option) *ReactActor {
 	r := &ReactActor{
@@ -121,6 +110,7 @@ func (r *ReactActor) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
 	return gentic.NewFlow(
 		reactLoopStep{
 			llm:                   r.llm,
+			toolCallingLLM:        r.toolCallingLLM,
 			model:                 r.model,
 			maxSteps:              r.maxSteps,
 			systemPrompt:          r.systemPrompt,

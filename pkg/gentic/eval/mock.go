@@ -52,3 +52,57 @@ func ReplyJSON(jsonStr string, err error) *MockLLM {
 		},
 	}
 }
+
+// MockToolCallingLLM implements [gentic.ToolCallingLLM] for tests.
+type MockToolCallingLLM struct {
+	ChatWithToolsFunc func(ctx context.Context, model string, messages []gentic.ToolMessage, tools []gentic.ToolDefinition) (*gentic.ToolCallingResponse, error)
+}
+
+var _ gentic.ToolCallingLLM = (*MockToolCallingLLM)(nil)
+
+// ChatWithTools delegates to ChatWithToolsFunc, or returns a stop response if unset.
+func (m *MockToolCallingLLM) ChatWithTools(ctx context.Context, model string, messages []gentic.ToolMessage, tools []gentic.ToolDefinition) (*gentic.ToolCallingResponse, error) {
+	if m != nil && m.ChatWithToolsFunc != nil {
+		return m.ChatWithToolsFunc(ctx, model, messages, tools)
+	}
+	return &gentic.ToolCallingResponse{
+		Message:      gentic.ToolMessage{Role: "assistant", Content: ""},
+		FinishReason: "stop",
+	}, nil
+}
+
+// ReplyToolCalls returns a [MockToolCallingLLM] that returns the given tool calls.
+func ReplyToolCalls(toolCalls []gentic.ToolCall, err error) *MockToolCallingLLM {
+	return &MockToolCallingLLM{
+		ChatWithToolsFunc: func(context.Context, string, []gentic.ToolMessage, []gentic.ToolDefinition) (*gentic.ToolCallingResponse, error) {
+			if err != nil {
+				return nil, err
+			}
+			return &gentic.ToolCallingResponse{
+				Message: gentic.ToolMessage{
+					Role:      "assistant",
+					ToolCalls: toolCalls,
+				},
+				FinishReason: "tool_calls",
+			}, nil
+		},
+	}
+}
+
+// ReplyText returns a [MockToolCallingLLM] that returns the given text and stops.
+func ReplyText(text string, err error) *MockToolCallingLLM {
+	return &MockToolCallingLLM{
+		ChatWithToolsFunc: func(context.Context, string, []gentic.ToolMessage, []gentic.ToolDefinition) (*gentic.ToolCallingResponse, error) {
+			if err != nil {
+				return nil, err
+			}
+			return &gentic.ToolCallingResponse{
+				Message: gentic.ToolMessage{
+					Role:    "assistant",
+					Content: text,
+				},
+				FinishReason: "stop",
+			}, nil
+		},
+	}
+}
