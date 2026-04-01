@@ -25,7 +25,10 @@ type ReflectLoopParams struct {
 	// If nil, a generic domain-neutral default is used.
 	BuildRevisionPrompt func(originalGenerationPrompt, previousDraft, feedback string) string
 	// OnIteration is called at the start of each loop iteration (before the generation Chat for that iteration).
-	// current is 1-based; total is MaxIterations+1 (iterations 0..MaxIterations).
+	// current and total follow [ReflectUILabelTotal]: when MaxIterations is 0 or 1, labels stay (1/1)
+	// (one user-facing reflection round per config). For MaxIterations >= 2, total is MaxIterations+1.
+	// If the reviewer PASSes before the last possible generation and MaxIterations > 1, OnIteration is
+	// also called once with (total, total) so progress reaches completion without a further draft.
 	OnIteration func(ctx context.Context, current, total int)
 }
 
@@ -35,10 +38,10 @@ func RunReflectLoop(ctx context.Context, p ReflectLoopParams) (string, error) {
 	var draft string
 	var feedbackBullets []string
 
-	totalIterations := p.MaxIterations + 1
 	for iteration := 0; iteration <= p.MaxIterations; iteration++ {
 		if p.OnIteration != nil {
-			p.OnIteration(ctx, iteration+1, totalIterations)
+			cur, tot := reflectUILabelPair(iteration, p.MaxIterations)
+			p.OnIteration(ctx, cur, tot)
 		}
 		var err error
 		if iteration == 0 {
@@ -67,6 +70,10 @@ func RunReflectLoop(ctx context.Context, p ReflectLoopParams) (string, error) {
 
 		pass, fb := ParseReflectionVerdict(raw)
 		if pass {
+			if p.OnIteration != nil && p.MaxIterations > 1 {
+				t := ReflectUILabelTotal(p.MaxIterations)
+				p.OnIteration(ctx, t, t)
+			}
 			return draft, nil
 		}
 		feedbackBullets = fb
