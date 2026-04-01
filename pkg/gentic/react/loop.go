@@ -105,15 +105,6 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 	}
 
 	log := s.logr()
-	if state != nil {
-		log.Info("react loop start",
-			"max_steps", s.maxSteps,
-			"model", s.model,
-			"user_input", truncateForLog(state.Input, 400),
-			"intent", state.Intent,
-			"metadata_keys", genticKeysPreview(state),
-		)
-	}
 
 	// Build tool definitions
 	toolDefs := make([]gentic.ToolDefinition, len(s.tools))
@@ -141,10 +132,6 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 				gentic.WithTransient(true))
 		}
 
-		log.Debug("react step call llm",
-			"step", step+1,
-			"max", s.maxSteps,
-			"message_count", len(messages))
 
 		resp, err := tcllm.ChatWithTools(ctx, s.model, messages, toolDefs)
 		if err != nil {
@@ -167,26 +154,21 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 			state.Thoughts = append(state.Thoughts, fmt.Sprintf("Calling tools: %v", toolNames))
 		}
 
-		log.Info("react llm response",
+		// Log the reasoning step (the model's thought)
+		log.Info("react think",
 			"step", step+1,
-			"finish_reason", resp.FinishReason,
-			"tool_calls_count", len(resp.Message.ToolCalls),
-			"content_preview", truncateForLog(resp.Message.Content, 500))
+			"thought", truncateForLog(state.Thoughts[len(state.Thoughts)-1], 120))
 
 		// Check termination condition
 		if resp.FinishReason == "stop" && len(resp.Message.ToolCalls) == 0 {
-			log.Info("react done: model stopped without tool calls",
-				"step", step+1,
-				"answer_preview", truncateForLog(resp.Message.Content, 500))
+			log.Info("react done", "step", step+1)
 			state.Output = resp.Message.Content
 			return nil
 		}
 
 		// If no tool calls but not stopped, model is confused; give it another turn
 		if len(resp.Message.ToolCalls) == 0 {
-			log.Warn("react: model did not call tools and did not stop; giving another turn",
-				"step", step+1,
-				"finish_reason", resp.FinishReason)
+			log.Warn("react: no tool call, retrying", "step", step+1)
 			continue
 		}
 
@@ -199,10 +181,7 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 
 			tool, ok := toolMap[toolName]
 			if !ok {
-				log.Warn("react: unknown tool name",
-					"step", step+1,
-					"tool", toolName,
-					"known_tools", toolNameList(toolMap))
+				log.Warn("react: unknown tool", "step", step+1, "tool", toolName)
 
 				// Append error tool message so model knows
 				messages = append(messages, gentic.ToolMessage{
@@ -214,10 +193,7 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 				continue
 			}
 
-			log.Info("react tool call",
-				"step", step+1,
-				"tool", toolName,
-				"action_input", truncateForLog(string(toolInput), 800))
+			log.Info("react tool", "step", step+1, "tool", toolName)
 
 			if n != nil {
 				n.Notify("react", gentic.ActivityRunning, fmt.Sprintf("Running %s", toolName), gentic.WithTransient(true))
@@ -241,16 +217,9 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 
 			var resultContent string
 			if toolErr != nil {
-				log.Warn("react tool error",
-					"step", step+1,
-					"tool", toolName,
-					"err", toolErr)
+				log.Warn("react tool error", "step", step+1, "tool", toolName, "err", toolErr)
 				resultContent = fmt.Sprintf(`{"error": %q}`, toolErr.Error())
 			} else {
-				log.Info("react tool success",
-					"step", step+1,
-					"tool", toolName,
-					"result_preview", truncateForLog(string(result), 800))
 				resultContent = string(result)
 			}
 
@@ -276,10 +245,7 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 	} else {
 		state.Output = "No response generated"
 	}
-	log.Warn("react max steps reached without final answer",
-		"max_steps", s.maxSteps,
-		"thought_count", len(state.Thoughts),
-		"fallback_output_preview", truncateForLog(state.Output, 200))
+	log.Warn("react max steps reached", "max_steps", s.maxSteps)
 	return nil
 }
 
