@@ -89,8 +89,7 @@ func (c conditionalStep) Run(ctx context.Context, s *State) error {
 // Errors are sent as StreamEvent{Token: StreamToken{Error: err}}.
 func (f Flow) Stream(ctx context.Context, s *State, sllm StreamingLLM) <-chan StreamEvent {
 	out := make(chan StreamEvent, 256)
-	notifier := &Notifier{ch: out}
-	ctx = WithNotifier(ctx, notifier)
+	ctx = WithNotifier(ctx, NewNotifier(out))
 
 	go func() {
 		defer close(out)

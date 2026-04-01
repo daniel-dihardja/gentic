@@ -11,6 +11,9 @@ import (
 type Observation struct {
 	TaskID  string // ID of the task that produced this output
 	Content string // the task's output
+	// ThoughtIndex, when non-nil, is the index in [State.Thoughts] this observation belongs to.
+	// The ReAct loop sets this so prior-step prompts pair thoughts with the correct tool output.
+	ThoughtIndex *int `json:"thoughtIndex,omitempty"`
 }
 
 // MetadataAccessor provides read-only, restricted access to metadata.

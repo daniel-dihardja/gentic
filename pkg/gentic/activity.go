@@ -28,6 +28,15 @@ type Notifier struct {
 	ch chan<- StreamEvent
 }
 
+// NewNotifier returns a notifier that writes activity and data events to ch.
+// If ch is nil, returns nil.
+func NewNotifier(ch chan<- StreamEvent) *Notifier {
+	if ch == nil {
+		return nil
+	}
+	return &Notifier{ch: ch}
+}
+
 type notifyOptions struct {
 	detail    string
 	transient bool

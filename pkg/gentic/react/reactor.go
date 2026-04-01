@@ -3,6 +3,8 @@ package react
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"time"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
@@ -26,18 +28,19 @@ Final Answer: <your complete answer>
 
 Important:
 - Use only the tools listed in "Available Tools"
-- Action Input must be valid JSON matching the tool's input_schema
+- Action Input must be valid JSON matching the tool's input_schema (use {} when the schema has no properties)
 - Keep thoughts brief (1-2 sentences)
 - Don't include the word 'Action:' or 'Action Input:' in your Thought
-- Only use one Action per response`
+- Only use one Action per response
+- You may use markdown bold around labels (e.g. **Action:**) as well as plain Action: — both are parsed`
 
 // Tool represents a callable action the ReAct agent can take.
 type Tool struct {
-	Name        string                                                                                       // name of the tool (e.g., "calculator")
-	Description string                                                                                       // human-readable description of what the tool does
-	InputSchema json.RawMessage                                                                              // JSON Schema describing the input parameters
-	Run         func(state *gentic.State, input json.RawMessage) (json.RawMessage, error)                   // function that executes the tool with state and JSON input/output
-	RunCompat   func(input json.RawMessage) (json.RawMessage, error)                                        // backward compatibility: old-style tool without state access
+	Name        string
+	Description string
+	InputSchema json.RawMessage
+	Run         func(ctx context.Context, state *gentic.State, input json.RawMessage) (json.RawMessage, error)
+	RunCompat   func(ctx context.Context, input json.RawMessage) (json.RawMessage, error)
 }
 
 // ReactActor implements a Reasoning + Acting loop.
@@ -48,7 +51,9 @@ type ReactActor struct {
 	maxSteps               int
 	systemPrompt           string
 	tools                  []Tool
-	validateMetadataLeaks  bool // if true, warn when tool outputs contain sensitive metadata
+	validateMetadataLeaks  bool
+	logger                 *slog.Logger
+	toolTimeout            time.Duration
 }
 
 // Option configures a ReactActor.
@@ -79,10 +84,20 @@ func WithTools(tools ...Tool) Option {
 	return func(r *ReactActor) { r.tools = tools }
 }
 
-// WithValidateMetadataLeaks enables warnings when tool outputs may contain sensitive metadata.
-// This helps catch tools that accidentally leak private metadata (keys starting with '_').
+// WithValidateMetadataLeaks enables warnings when tool outputs contain sensitive metadata.
 func WithValidateMetadataLeaks(enabled bool) Option {
 	return func(r *ReactActor) { r.validateMetadataLeaks = enabled }
+}
+
+// WithLogger sets structured logging for the ReAct loop.
+// If nil, the loop still emits INFO traces via slog.Default() (component gentic.react).
+func WithLogger(l *slog.Logger) Option {
+	return func(r *ReactActor) { r.logger = l }
+}
+
+// WithToolTimeout caps each tool invocation with context.WithTimeout. Zero disables.
+func WithToolTimeout(d time.Duration) Option {
+	return func(r *ReactActor) { r.toolTimeout = d }
 }
 
 // NewReactActor creates a ReactActor ready to use as a gentic.Agent resolver.
@@ -111,28 +126,14 @@ func (r *ReactActor) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
 			systemPrompt:          r.systemPrompt,
 			tools:                 r.tools,
 			validateMetadataLeaks: r.validateMetadataLeaks,
+			logger:                r.logger,
+			toolTimeout:           r.toolTimeout,
 		},
 	)
 }
 
-// NewTool is a helper to create a tool with JSON schema and a function that handles JSON input/output.
-// Backward compatible: use this for tools that don't need state/metadata access.
-// For tools that need state/metadata, use NewToolWithState instead.
-// Example:
-//
-//	NewTool(
-//	    "calculator",
-//	    "Adds two numbers",
-//	    json.RawMessage(`{"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}}`),
-//	    func(input json.RawMessage) (json.RawMessage, error) {
-//	        var params struct{ A float64 `json:"a"`; B float64 `json:"b"` }
-//	        if err := json.Unmarshal(input, &params); err != nil {
-//	            return nil, err
-//	        }
-//	        return json.Marshal(map[string]float64{"result": params.A + params.B})
-//	    },
-//	)
-func NewTool(name, description string, inputSchema json.RawMessage, run func(json.RawMessage) (json.RawMessage, error)) Tool {
+// NewTool is a helper for tools that do not need state/metadata access.
+func NewTool(name, description string, inputSchema json.RawMessage, run func(context.Context, json.RawMessage) (json.RawMessage, error)) Tool {
 	return Tool{
 		Name:        name,
 		Description: description,
@@ -142,20 +143,7 @@ func NewTool(name, description string, inputSchema json.RawMessage, run func(jso
 }
 
 // NewToolWithState creates a tool that has access to the State (including metadata).
-// Use this when your tool needs to read metadata (user_id, tenant_id, etc.) from the ambient context.
-// Example:
-//
-//	NewToolWithState(
-//	    "fetch_analytics",
-//	    "Fetches analytics for a product",
-//	    json.RawMessage(`{"type": "object", "properties": {"product": {"type": "string"}}}`),
-//	    func(state *gentic.State, input json.RawMessage) (json.RawMessage, error) {
-//	        analyticsId := state.Metadata["analyticsId"].(string)
-//	        // Use analyticsId to fetch data...
-//	        return json.Marshal(map[string]interface{}{"data": "..."})
-//	    },
-//	)
-func NewToolWithState(name, description string, inputSchema json.RawMessage, run func(*gentic.State, json.RawMessage) (json.RawMessage, error)) Tool {
+func NewToolWithState(name, description string, inputSchema json.RawMessage, run func(context.Context, *gentic.State, json.RawMessage) (json.RawMessage, error)) Tool {
 	return Tool{
 		Name:        name,
 		Description: description,

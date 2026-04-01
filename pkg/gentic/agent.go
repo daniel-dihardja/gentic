@@ -168,11 +168,18 @@ func (a Agent) buildInputWithHistory(messages []Message, currentQuery string) st
 	for _, msg := range priorMessages {
 		content := msg.TextContent()
 		if content != "" {
-			sb.WriteString(fmt.Sprintf("%s: %s\n", strings.Title(msg.Role), content))
+			sb.WriteString(fmt.Sprintf("%s: %s\n", capitalizeRole(msg.Role), content))
 		}
 	}
 	sb.WriteString("\n")
 	sb.WriteString(currentQuery)
 
 	return sb.String()
+}
+
+func capitalizeRole(role string) string {
+	if role == "" {
+		return role
+	}
+	return strings.ToUpper(role[:1]) + role[1:]
 }
