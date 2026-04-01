@@ -2,6 +2,7 @@ package intent
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
 	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
@@ -16,6 +17,7 @@ type Router struct {
 	routes   map[string]gentic.Flow
 	fallback gentic.Flow
 	llm      gentic.LLM
+	logger   *slog.Logger
 }
 
 // NewRouter creates a Router that will classify input into one of the given labels.
@@ -36,6 +38,12 @@ func (r *Router) WithLLM(llm gentic.LLM) *Router {
 	return r
 }
 
+// WithLogger sets the structured logger. If nil, slog.Default() is used with component "gentic.intent".
+func (r *Router) WithLogger(l *slog.Logger) *Router {
+	r.logger = l
+	return r
+}
+
 // On registers a Flow for a specific label.
 func (r *Router) On(label string, flow gentic.Flow) *Router {
 	r.routes[label] = flow
@@ -48,17 +56,34 @@ func (r *Router) Default(flow gentic.Flow) *Router {
 	return r
 }
 
+func (r *Router) logr() *slog.Logger {
+	if r.logger != nil {
+		return r.logger
+	}
+	return slog.Default().With("component", "gentic.intent")
+}
+
 // Resolve implements gentic.IntentResolver.
 func (r *Router) Resolve(ctx context.Context, s *gentic.State) gentic.Flow {
+	log := r.logr()
+
 	intent, err := detect(ctx, r.llm, s.Input, r.labels)
-	if err != nil || intent == "" {
+	if err != nil {
+		log.Warn("intent detect error", "err", err)
+		return r.fallback
+	}
+	if intent == "" {
+		log.Warn("intent: empty result, using fallback")
 		return r.fallback
 	}
 
+	log.Info("intent detect", "intent", intent)
 	s.Intent = intent
 
-	if flow, ok := r.routes[intent]; ok {
-		return flow
+	flow, ok := r.routes[intent]
+	if !ok {
+		log.Warn("intent: no route, using fallback", "intent", intent)
+		return r.fallback
 	}
-	return r.fallback
+	return flow
 }
