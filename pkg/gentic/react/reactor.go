@@ -17,6 +17,11 @@ const defaultMaxSteps = 10
 
 const defaultSystemPrompt = `You are a helpful assistant. Use the provided tools to gather information and complete tasks. When you have enough information to fully answer the user's request, respond directly without calling any tools.`
 
+// GuardFunc runs before a tool handler (after the model chose the tool). Use it for prerequisites:
+// validating ambient metadata, lazy-loading shared state, etc. If it returns a non-nil error,
+// the tool handler is skipped and the error is returned to the model as the tool result.
+type GuardFunc func(ctx context.Context, state *gentic.State) error
+
 // Tool represents a callable action the ReAct agent can take.
 type Tool struct {
 	Name        string
@@ -24,6 +29,7 @@ type Tool struct {
 	InputSchema json.RawMessage
 	Run         func(ctx context.Context, state *gentic.State, input json.RawMessage) (json.RawMessage, error)
 	RunCompat   func(ctx context.Context, input json.RawMessage) (json.RawMessage, error)
+	Guards      []GuardFunc
 }
 
 // ReactActor implements a Reasoning + Acting loop.
@@ -133,11 +139,13 @@ func NewTool(name, description string, inputSchema json.RawMessage, run func(con
 }
 
 // NewToolWithState creates a tool that has access to the State (including metadata).
-func NewToolWithState(name, description string, inputSchema json.RawMessage, run func(context.Context, *gentic.State, json.RawMessage) (json.RawMessage, error)) Tool {
+// Optional guards run in order before run; see [GuardFunc].
+func NewToolWithState(name, description string, inputSchema json.RawMessage, run func(context.Context, *gentic.State, json.RawMessage) (json.RawMessage, error), guards ...GuardFunc) Tool {
 	return Tool{
 		Name:        name,
 		Description: description,
 		InputSchema: inputSchema,
 		Run:         run,
+		Guards:      guards,
 	}
 }

@@ -417,3 +417,75 @@ func TestNativeLoop_StateObservationsCompat(t *testing.T) {
 		t.Errorf("expected final answer, got: %s", state.Output)
 	}
 }
+
+// TestNativeLoop_GuardErrorSkipsToolHandler: a failing guard prevents the tool Run from executing.
+func TestNativeLoop_GuardErrorSkipsToolHandler(t *testing.T) {
+	handlerRuns := false
+	callCount := 0
+	mockLLM := &MockToolCallingLLM{
+		ChatWithToolsFunc: func(ctx context.Context, model string, messages []gentic.ToolMessage, tools []gentic.ToolDefinition) (*gentic.ToolCallingResponse, error) {
+			callCount++
+			if callCount == 1 {
+				return &gentic.ToolCallingResponse{
+					Message: gentic.ToolMessage{
+						Role: "assistant",
+						ToolCalls: []gentic.ToolCall{
+							{
+								ID:   "call_1",
+								Type: "function",
+								Function: gentic.ToolCallFunction{
+									Name:      "guarded_tool",
+									Arguments: "{}",
+								},
+							},
+						},
+					},
+					FinishReason: "tool_calls",
+				}, nil
+			}
+			return &gentic.ToolCallingResponse{
+				Message: gentic.ToolMessage{
+					Role:    "assistant",
+					Content: "Acknowledged failure.",
+				},
+				FinishReason: "stop",
+			}, nil
+		},
+	}
+
+	tool := NewToolWithState(
+		"guarded_tool",
+		"Test",
+		json.RawMessage(`{"type":"object"}`),
+		func(ctx context.Context, state *gentic.State, input json.RawMessage) (json.RawMessage, error) {
+			handlerRuns = true
+			return json.RawMessage(`{"ok":true}`), nil
+		},
+		func(ctx context.Context, state *gentic.State) error {
+			return errors.New("guard blocked")
+		},
+	)
+
+	state := &gentic.State{Input: "invoke guarded tool"}
+	actor := NewReactActor(
+		WithToolCallingLLM(mockLLM),
+		WithMaxSteps(5),
+		WithTools(tool),
+	)
+	flow := actor.Resolve(context.Background(), state)
+	err := flow.Run(context.Background(), state)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if handlerRuns {
+		t.Error("handler should not run when guard fails")
+	}
+	if len(state.Observations) != 1 {
+		t.Fatalf("expected 1 observation, got %d", len(state.Observations))
+	}
+	wantObs := "Error: guard blocked"
+	if state.Observations[0].Content != wantObs {
+		t.Errorf("unexpected observation: %q want %q", state.Observations[0].Content, wantObs)
+	}
+}

@@ -208,6 +208,15 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 					toolCtx, cancel = context.WithTimeout(ctx, s.toolTimeout)
 					defer cancel()
 				}
+				for _, g := range tool.Guards {
+					if g == nil {
+						continue
+					}
+					if err := g(toolCtx, state); err != nil {
+						toolErr = err
+						return
+					}
+				}
 				if tool.Run != nil {
 					result, toolErr = tool.Run(toolCtx, state, toolInput)
 				} else {
