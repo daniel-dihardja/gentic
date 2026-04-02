@@ -153,22 +153,22 @@ Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and *
 
 ## Memory
 
-**Memory** is optional **multi-turn** context for `gentic.Agent`. With **`Memory: nil`**, each **`Run`** is stateless. When you attach a **`gentic.Memory`**, the agent **loads** prior messages before the resolver runs, **enriches** `State.Input` with a `[Conversation History]` preamble (so the model can resolve “that city”), then **appends** the new user turn and assistant **`Output`** after a successful run.
+**MemoryStore** is optional **multi-turn** context for `gentic.Agent`. With **`MemoryStore: nil`**, each **`Run`** is stateless (unless you pass **`AgentInput.Messages`**). When you set a **`gentic.ThreadStore`** (e.g. **`NewInMemoryThreadStore()`**) and a non-empty **`AgentInput.ThreadID`**, the agent resolves a per-thread **`Memory`**, **loads** prior messages before the resolver runs, **enriches** `State.Input` with a `[Conversation History]` preamble, then **appends** the new user turn and assistant **`Output`** after a successful run.
 
-Implement **`Memory`** yourself (`Append`, **`Messages`**, **`Clear`**) for a database or cache, or use **`NewInMemoryStorage()`** for a thread-safe, process-local store. Alternatively, **`RunWithContext(gentic.AgentInput{ Messages: ... })`** supplies a **Vercel AI SDK–compatible** message list directly; the last user message becomes the current query, and history is merged the same way for the run.
+Implement **`Memory`** yourself (`Append`, **`Messages`**, **`Clear`**) for a database-backed cache, or use **`NewInMemoryThreadStore()`** so each **thread ID** gets an isolated **`InMemoryStorage`**. Alternatively, **`RunWithContext(gentic.AgentInput{ Messages: ... })`** supplies a **Vercel AI SDK–compatible** message list directly; the last user message becomes the current query, and history is merged the same way for the run.
 
 ```go
 import "github.com/daniel-dihardja/gentic/pkg/gentic"
 
-mem := gentic.NewInMemoryStorage()
+store := gentic.NewInMemoryThreadStore()
 
 agent := gentic.Agent{
-	Resolver: yourResolver,
-	Memory:   mem,
+	Resolver:    yourResolver,
+	MemoryStore: store,
 }
 
-_, err := agent.Run("What is the capital of France?")
-_, err = agent.Run("What is the population of that city?") // prior turn is in State.Input
+_, err := agent.RunWithContext(ctx, gentic.AgentInput{Query: "What is the capital of France?", ThreadID: "user-1"})
+_, err = agent.RunWithContext(ctx, gentic.AgentInput{Query: "What is the population of that city?", ThreadID: "user-1"}) // prior turn is in State.Input
 ```
 
 Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/with-memory](./examples/simple/with-memory)**—`go run ./examples/simple/with-memory/main.go`.

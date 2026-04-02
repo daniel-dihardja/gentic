@@ -1,6 +1,8 @@
 package gentic
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -81,5 +83,83 @@ func TestNewUserMessage(t *testing.T) {
 	}
 	if msg.ID == "" {
 		t.Error("expected non-empty ID")
+	}
+}
+
+func TestInMemoryThreadStore_GetEmptyReturnsNil(t *testing.T) {
+	store := NewInMemoryThreadStore()
+	if m := store.Get(""); m != nil {
+		t.Fatalf("expected nil Memory for empty thread id, got %v", m)
+	}
+	if m := store.Get("   "); m != nil {
+		t.Fatalf("expected nil Memory for whitespace-only thread id, got %v", m)
+	}
+}
+
+func TestInMemoryThreadStore_Isolation(t *testing.T) {
+	store := NewInMemoryThreadStore()
+	a := store.Get("thread-a")
+	b := store.Get("thread-b")
+	_ = a.Append(NewUserMessage("only-a"))
+	_ = b.Append(NewUserMessage("only-b"))
+	msgsA, err := a.Messages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgsB, err := b.Messages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgsA) != 1 || msgsA[0].TextContent() != "only-a" {
+		t.Errorf("thread-a: got %+v", msgsA)
+	}
+	if len(msgsB) != 1 || msgsB[0].TextContent() != "only-b" {
+		t.Errorf("thread-b: got %+v", msgsB)
+	}
+}
+
+func TestInMemoryThreadStore_ConcurrentGetAndAppend(t *testing.T) {
+	store := NewInMemoryThreadStore()
+	const threads = 8
+	const goroutines = 32
+	const appendsPerGoroutine = 50
+
+	var wg sync.WaitGroup
+	var errMu sync.Mutex
+	var errStr string
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		g := g
+		go func() {
+			defer wg.Done()
+			tid := fmt.Sprintf("thread-%d", g%threads)
+			for i := 0; i < appendsPerGoroutine; i++ {
+				m := store.Get(tid)
+				if m == nil {
+					errMu.Lock()
+					errStr = "Get returned nil for " + tid
+					errMu.Unlock()
+					return
+				}
+				_ = m.Append(NewUserMessage("msg"))
+			}
+		}()
+	}
+	wg.Wait()
+	if errStr != "" {
+		t.Fatal(errStr)
+	}
+
+	want := (goroutines / threads) * appendsPerGoroutine
+	for i := 0; i < threads; i++ {
+		tid := fmt.Sprintf("thread-%d", i)
+		m := store.Get(tid)
+		msgs, err := m.Messages()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(msgs) != want {
+			t.Errorf("thread %s: want %d messages, got %d", tid, want, len(msgs))
+		}
 	}
 }

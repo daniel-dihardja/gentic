@@ -1,6 +1,38 @@
 package gentic
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
+
+// ThreadStore maps conversation thread IDs to isolated Memory instances.
+// Implementations must be safe for concurrent use from multiple goroutines.
+type ThreadStore interface {
+	// Get returns the Memory for threadID, creating storage on first access.
+	// If threadID is empty after trimming whitespace, Get returns nil.
+	Get(threadID string) Memory
+}
+
+// InMemoryThreadStore is a thread-safe registry of per-thread InMemoryStorage.
+// It uses sync.Map for the thread-ID index; each InMemoryStorage has its own mutex.
+type InMemoryThreadStore struct {
+	m sync.Map // string -> *InMemoryStorage
+}
+
+// NewInMemoryThreadStore creates an empty thread store.
+func NewInMemoryThreadStore() *InMemoryThreadStore {
+	return &InMemoryThreadStore{}
+}
+
+// Get implements [ThreadStore].
+func (s *InMemoryThreadStore) Get(threadID string) Memory {
+	tid := strings.TrimSpace(threadID)
+	if tid == "" {
+		return nil
+	}
+	v, _ := s.m.LoadOrStore(tid, NewInMemoryStorage())
+	return v.(Memory)
+}
 
 // Memory is an interface for storing and retrieving conversation messages.
 // Implementations can be in-memory, database-backed, or custom.

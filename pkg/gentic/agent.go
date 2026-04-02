@@ -13,11 +13,13 @@ type AgentInput struct {
 	Metadata     map[string]interface{} // context data accessible to steps
 	Model        string                 // LLM model to use for streaming (e.g. "gpt-4o-mini")
 	SystemPrompt string                 // system prompt for streaming calls
+	// ThreadID scopes conversational memory when MemoryStore is set (same ID = same history).
+	ThreadID string
 }
 
 type Agent struct {
-	Resolver IntentResolver // the flow resolver
-	Memory   Memory         // optional message storage (nil = disabled)
+	Resolver    IntentResolver // the flow resolver
+	MemoryStore ThreadStore    // optional per-thread message storage (nil = disabled)
 }
 
 // Run executes the agent with a simple string input.
@@ -30,6 +32,14 @@ func (a Agent) Run(input string) (*State, error) {
 type preparedRun struct {
 	state *State
 	query string
+	mem   Memory // per-thread memory for this run (nil if MemoryStore disabled or no ThreadID)
+}
+
+func (a Agent) threadMemory(input AgentInput) Memory {
+	if a.MemoryStore == nil {
+		return nil
+	}
+	return a.MemoryStore.Get(input.ThreadID)
 }
 
 func (a Agent) prepareState(input AgentInput) preparedRun {
@@ -37,6 +47,8 @@ func (a Agent) prepareState(input AgentInput) preparedRun {
 	if metadata == nil {
 		metadata = make(map[string]interface{})
 	}
+
+	mem := a.threadMemory(input)
 
 	var query string
 	var allMessages []Message
@@ -51,8 +63,8 @@ func (a Agent) prepareState(input AgentInput) preparedRun {
 		}
 	} else {
 		query = input.Query
-		if a.Memory != nil {
-			history, err := a.Memory.Messages()
+		if mem != nil {
+			history, err := mem.Messages()
 			if err == nil {
 				allMessages = history
 			}
@@ -67,11 +79,11 @@ func (a Agent) prepareState(input AgentInput) preparedRun {
 		Metadata: metadata,
 	}
 
-	return preparedRun{state: state, query: query}
+	return preparedRun{state: state, query: query, mem: mem}
 }
 
 // RunWithContext executes the agent with structured input including optional metadata.
-// If Memory is set and conversation history is available, it will be prepended to the input.
+// If MemoryStore is set and ThreadID is non-empty, per-thread history is loaded when Messages is empty.
 // Metadata is accessible to all steps via state.Metadata.
 // The context is passed to the resolver and every step for cancellation and deadlines.
 func (a Agent) RunWithContext(ctx context.Context, input AgentInput) (*State, error) {
@@ -84,9 +96,9 @@ func (a Agent) RunWithContext(ctx context.Context, input AgentInput) (*State, er
 		return nil, err
 	}
 
-	if a.Memory != nil && pr.query != "" {
-		a.Memory.Append(NewUserMessage(pr.query))
-		a.Memory.Append(NewAssistantMessage(state.Output))
+	if pr.mem != nil && pr.query != "" {
+		_ = pr.mem.Append(NewUserMessage(pr.query))
+		_ = pr.mem.Append(NewAssistantMessage(state.Output))
 	}
 
 	return state, nil
@@ -101,7 +113,7 @@ func (a Agent) RunStream(ctx context.Context, input string, sllm StreamingLLM) <
 // StreamWithContext streams token-by-token output with structured input.
 // It uses the same Resolver → Flow pipeline as RunWithContext; flows that include a
 // StreamingStep delegate to the provider stream; otherwise output is wrapped as a synthetic stream.
-// If Memory is set, the full assembled response is stored after the stream completes.
+// If MemoryStore and ThreadID are set, the full assembled response is stored after the stream completes.
 func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm StreamingLLM) <-chan StreamEvent {
 	pr := a.prepareState(input)
 	state := pr.state
@@ -109,10 +121,11 @@ func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm Str
 	flow := a.Resolver.Resolve(ctx, state)
 	upstream := flow.Stream(ctx, state, sllm)
 
-	if a.Memory == nil || pr.query == "" {
+	if pr.mem == nil || pr.query == "" {
 		return upstream
 	}
 
+	mem := pr.mem
 	out := make(chan StreamEvent, 64)
 	go func() {
 		defer close(out)
@@ -127,8 +140,8 @@ func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm Str
 			}
 		}
 		if sb.Len() > 0 {
-			a.Memory.Append(NewUserMessage(pr.query))
-			a.Memory.Append(NewAssistantMessage(sb.String()))
+			_ = mem.Append(NewUserMessage(pr.query))
+			_ = mem.Append(NewAssistantMessage(sb.String()))
 		}
 	}()
 

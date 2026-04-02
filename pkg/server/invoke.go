@@ -28,6 +28,7 @@ func (req InvokeRequest) AgentInput() gentic.AgentInput {
 		return gentic.AgentInput{
 			Query:    req.Message,
 			Metadata: req.Metadata,
+			ThreadID: req.ThreadID,
 		}
 	}
 	meta := map[string]interface{}{
@@ -51,6 +52,7 @@ func (req InvokeRequest) AgentInput() gentic.AgentInput {
 	return gentic.AgentInput{
 		Query:    req.Message,
 		Metadata: meta,
+		ThreadID: req.ThreadID,
 	}
 }
 

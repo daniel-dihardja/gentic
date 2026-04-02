@@ -1,6 +1,7 @@
 package gentic
 
 import (
+	"crypto/rand"
 	"strings"
 	"time"
 )
@@ -73,12 +74,18 @@ func generateID() string {
 	return "msg-" + time.Now().Format("20060102150405") + "-" + randStr(8)
 }
 
-// randStr generates a random string of n characters.
+// randStr generates a random string of n characters using crypto/rand.
 func randStr(n int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		for i := range b {
+			b[i] = charset[i%len(charset)]
+		}
+		return string(b)
+	}
 	for i := range b {
-		b[i] = charset[int64(i)%int64(len(charset))]
+		b[i] = charset[int(b[i])%len(charset)]
 	}
 	return string(b)
 }
