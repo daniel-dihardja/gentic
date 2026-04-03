@@ -71,15 +71,27 @@ func (Provider) Chat(ctx context.Context, model, systemPrompt, userContent strin
 	return resp.Choices[0].Message.Content, nil
 }
 
-// ChatJSON requests a JSON object and unmarshals it into result. Uses response_format json_object.
+// ChatJSON requests a JSON object and unmarshals it into result.
+// Uses response_format json_schema with strict mode when schema can be derived from result's type.
 func (Provider) ChatJSON(ctx context.Context, model, systemPrompt, userContent string, result any) error {
+	schema, err := gentic.SchemaFromValue(result)
+	if err != nil {
+		return fmt.Errorf("openai: build JSON schema: %w", err)
+	}
 	resp, err := ChatCompletion(ctx, ChatCompletionRequest{
 		Model: model,
 		Messages: []ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userContent},
 		},
-		ResponseFormat: &ResponseFormat{Type: "json_object"},
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchemaSpec{
+				Name:   gentic.SchemaTitleFromValue(result),
+				Strict: true,
+				Schema: schema,
+			},
+		},
 	})
 	if err != nil {
 		return err
@@ -142,11 +154,11 @@ func Chat(request ChatCompletionRequest) (*ChatCompletionResponse, error) {
 
 // Wire types for tool-calling API
 type toolChatMessage struct {
-	Role       string          `json:"role"`
-	Content    string          `json:"content,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
 	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
-	Name       string          `json:"name,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	Name       string           `json:"name,omitempty"`
 }
 
 type openaiToolCall struct {
@@ -161,8 +173,8 @@ type openaiToolCallFunction struct {
 }
 
 type openaiTool struct {
-	Type     string          `json:"type"` // "function"
-	Function openaiToolSpec  `json:"function"`
+	Type     string         `json:"type"` // "function"
+	Function openaiToolSpec `json:"function"`
 }
 
 type openaiToolSpec struct {

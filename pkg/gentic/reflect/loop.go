@@ -22,10 +22,10 @@ type reflectionLoopStep struct {
 	critiqueUserBuilder func(input, draft string) string
 }
 
-// critiqueJSON is the structured critique result from the LLM (response_format json_object).
+// critiqueJSON is the structured critique result from the LLM (structured JSON output).
 type critiqueJSON struct {
 	Verdict  string `json:"verdict"`
-	Feedback string `json:"feedback,omitempty"`
+	Feedback string `json:"feedback"`
 }
 
 func (s reflectionLoopStep) Run(ctx context.Context, state *gentic.State) error {

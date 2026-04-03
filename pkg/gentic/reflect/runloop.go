@@ -2,6 +2,7 @@ package reflect
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -16,11 +17,11 @@ type ReflectLoopParams struct {
 	Model string
 	// MaxIterations matches legacy gentic-agents semantics: iteration runs from 0 through MaxIterations inclusive;
 	// on the last iteration the draft is returned without a further critique when the cap is hit.
-	MaxIterations int
-	GenerationSystemPrompt   string
-	ReflectionSystemPrompt   string
-	GenerationPrompt         string
-	BuildReflectionUser      func(draft string) string
+	MaxIterations          int
+	GenerationSystemPrompt string
+	ReflectionSystemPrompt string
+	GenerationPrompt       string
+	BuildReflectionUser    func(draft string) string
 	// BuildRevisionPrompt builds the user message for refinement iterations (iteration >= 1).
 	// If nil, a generic domain-neutral default is used.
 	BuildRevisionPrompt func(originalGenerationPrompt, previousDraft, feedback string) string
@@ -138,4 +139,68 @@ func RunStructuredReflectLoop[T any](ctx context.Context, p ReflectLoopParams, p
 		return zero, err
 	}
 	return parse(draft)
+}
+
+// RunTypedReflectLoop runs generate → critique → refine like [RunReflectLoop], but generation
+// uses [gentic.LLM.ChatJSON] so the model output conforms to the JSON schema for T (OpenAI
+// structured outputs when using the OpenAI provider). The reflection step still uses plain
+// [gentic.LLM.Chat] with PASS / IMPROVE parsing.
+func RunTypedReflectLoop[T any](ctx context.Context, p ReflectLoopParams) (T, error) {
+	var zero T
+	var draft T
+	var feedbackBullets []string
+
+	for iteration := 0; iteration <= p.MaxIterations; iteration++ {
+		if p.OnIteration != nil {
+			cur, tot := reflectUILabelPair(iteration, p.MaxIterations)
+			p.OnIteration(ctx, cur, tot)
+		}
+		var err error
+		if iteration == 0 {
+			err = p.LLM.ChatJSON(ctx, p.Model, p.GenerationSystemPrompt, p.GenerationPrompt, &draft)
+		} else {
+			fb := strings.Join(feedbackBullets, "\n")
+			rev := p.BuildRevisionPrompt
+			if rev == nil {
+				rev = defaultRevisionPrompt
+			}
+			prevDraft, mErr := json.Marshal(draft)
+			if mErr != nil {
+				return zero, fmt.Errorf("reflect: marshal draft: %w", mErr)
+			}
+			user := rev(p.GenerationPrompt, string(prevDraft), fb)
+			err = p.LLM.ChatJSON(ctx, p.Model, p.GenerationSystemPrompt, user, &draft)
+		}
+		if err != nil {
+			return zero, err
+		}
+
+		if iteration >= p.MaxIterations {
+			return draft, nil
+		}
+
+		draftBytes, err := json.Marshal(draft)
+		if err != nil {
+			return zero, fmt.Errorf("reflect: marshal draft for reflection: %w", err)
+		}
+		refUser := p.BuildReflectionUser(string(draftBytes))
+		raw, err := p.LLM.Chat(ctx, p.Model, p.ReflectionSystemPrompt, refUser)
+		if err != nil {
+			return zero, err
+		}
+
+		pass, fb := ParseReflectionVerdict(raw)
+		if pass {
+			if p.OnIteration != nil && p.MaxIterations > 1 {
+				t := ReflectUILabelTotal(p.MaxIterations)
+				p.OnIteration(ctx, t, t)
+			}
+			return draft, nil
+		}
+		feedbackBullets = fb
+		if len(feedbackBullets) == 0 {
+			feedbackBullets = []string{strings.TrimSpace(raw)}
+		}
+	}
+	return draft, nil
 }
