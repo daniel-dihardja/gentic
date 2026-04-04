@@ -17,6 +17,7 @@ type Router struct {
 	routes   map[string]gentic.Flow
 	fallback gentic.Flow
 	llm      gentic.LLM
+	model    string // classifier model; empty uses [openai.DefaultModel] in detect
 	logger   *slog.Logger
 }
 
@@ -35,6 +36,12 @@ func (r *Router) WithLLM(llm gentic.LLM) *Router {
 	if llm != nil {
 		r.llm = llm
 	}
+	return r
+}
+
+// WithModel sets the model used for intent classification. Empty uses [openai.DefaultModel].
+func (r *Router) WithModel(model string) *Router {
+	r.model = model
 	return r
 }
 
@@ -67,7 +74,7 @@ func (r *Router) logr() *slog.Logger {
 func (r *Router) Resolve(ctx context.Context, s *gentic.State) gentic.Flow {
 	log := r.logr()
 
-	intent, err := detect(ctx, r.llm, s.Input, r.labels)
+	intent, err := detect(ctx, r.llm, s.Input, r.labels, r.model)
 	if err != nil {
 		log.Warn("intent detect error", "err", err)
 		return r.fallback

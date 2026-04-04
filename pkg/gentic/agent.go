@@ -2,7 +2,6 @@ package gentic
 
 import (
 	"context"
-	"fmt"
 	"strings"
 )
 
@@ -71,10 +70,8 @@ func (a Agent) prepareState(input AgentInput) preparedRun {
 		}
 	}
 
-	enrichedInput := a.buildInputWithHistory(allMessages, query)
-
 	state := &State{
-		Input:    enrichedInput,
+		Input:    query,
 		Messages: allMessages,
 		Metadata: metadata,
 	}
@@ -146,53 +143,4 @@ func (a Agent) StreamWithContext(ctx context.Context, input AgentInput, sllm Str
 	}()
 
 	return out
-}
-
-// buildInputWithHistory constructs an enriched input string that includes conversation history.
-// If no prior messages exist, returns the query unchanged.
-func (a Agent) buildInputWithHistory(messages []Message, currentQuery string) string {
-	// Filter to prior messages (exclude the current query itself)
-	var priorMessages []Message
-	var foundCurrentQuery bool
-
-	// Iterate backwards to find where current query appears
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		if msg.Role == "user" && msg.TextContent() == currentQuery && !foundCurrentQuery {
-			foundCurrentQuery = true
-			continue
-		}
-		priorMessages = append(priorMessages, msg)
-	}
-
-	// Reverse to chronological order
-	for i, j := 0, len(priorMessages)-1; i < j; i, j = i+1, j-1 {
-		priorMessages[i], priorMessages[j] = priorMessages[j], priorMessages[i]
-	}
-
-	// If no prior conversation, return query as-is
-	if len(priorMessages) == 0 {
-		return currentQuery
-	}
-
-	// Build preamble with conversation history
-	var sb strings.Builder
-	sb.WriteString("[Conversation History]\n")
-	for _, msg := range priorMessages {
-		content := msg.TextContent()
-		if content != "" {
-			sb.WriteString(fmt.Sprintf("%s: %s\n", capitalizeRole(msg.Role), content))
-		}
-	}
-	sb.WriteString("\n")
-	sb.WriteString(currentQuery)
-
-	return sb.String()
-}
-
-func capitalizeRole(role string) string {
-	if role == "" {
-		return role
-	}
-	return strings.ToUpper(role[:1]) + role[1:]
 }

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/daniel-dihardja/gentic/pkg/gentic"
+	"github.com/daniel-dihardja/gentic/pkg/providers/openai"
 )
 
 var _ gentic.StreamingStep = reactLoopStep{}
@@ -19,15 +19,13 @@ var _ gentic.StreamingStep = reactLoopStep{}
 // Each action is executed and its result is appended to state.Observations.
 // state.Output is set to the final answer when the agent decides to stop.
 type reactLoopStep struct {
-	llm                   gentic.LLM
-	toolCallingLLM        gentic.ToolCallingLLM
-	model                 string
-	maxSteps              int
-	systemPrompt          string
-	tools                 []Tool
-	validateMetadataLeaks bool
-	logger                *slog.Logger
-	toolTimeout           time.Duration
+	toolCallingLLM gentic.ToolCallingLLM
+	model          string
+	maxSteps       int
+	systemPrompt   string
+	tools          []Tool
+	logger         *slog.Logger
+	toolTimeout    time.Duration
 }
 
 func (s reactLoopStep) Run(ctx context.Context, state *gentic.State) error {
@@ -50,22 +48,32 @@ func truncateForLog(s string, maxRunes int) string {
 	return string(r[:maxRunes]) + "…"
 }
 
-func genticKeysPreview(state *gentic.State) []string {
-	if state == nil {
-		return nil
+// initialToolMessages builds the OpenAI thread from system prompt, optional [gentic.State.Messages]
+// history (user/assistant only), and the current user turn in [gentic.State.Input].
+func initialToolMessages(systemPrompt string, state *gentic.State) []gentic.ToolMessage {
+	out := []gentic.ToolMessage{{Role: "system", Content: systemPrompt}}
+	if len(state.Messages) == 0 {
+		return append(out, gentic.ToolMessage{Role: "user", Content: state.Input})
 	}
-	keys := state.SecureMetadata().Keys()
-	sort.Strings(keys)
-	return keys
-}
-
-func toolNameList(toolMap map[string]Tool) []string {
-	names := make([]string, 0, len(toolMap))
-	for k := range toolMap {
-		names = append(names, k)
+	for _, m := range state.Messages {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		c := m.TextContent()
+		if strings.TrimSpace(c) == "" {
+			continue
+		}
+		out = append(out, gentic.ToolMessage{Role: role, Content: c})
 	}
-	sort.Strings(names)
-	return names
+	if len(state.Messages) > 0 {
+		last := state.Messages[len(state.Messages)-1]
+		if strings.EqualFold(last.Role, "user") && strings.TrimSpace(last.TextContent()) == strings.TrimSpace(state.Input) {
+			return out
+		}
+	}
+	out = append(out, gentic.ToolMessage{Role: "user", Content: state.Input})
+	return out
 }
 
 // Stream implements StreamingStep: emits activity events during the loop and the final text as tokens.
@@ -89,14 +97,9 @@ func (s reactLoopStep) Stream(ctx context.Context, state *gentic.State, _ gentic
 }
 
 func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gentic.Notifier) error {
-	// Resolve ToolCallingLLM
 	tcllm := s.toolCallingLLM
 	if tcllm == nil {
-		var ok bool
-		tcllm, ok = s.llm.(gentic.ToolCallingLLM)
-		if !ok {
-			return fmt.Errorf("react: LLM does not implement ToolCallingLLM; use WithToolCallingLLM or a provider that supports tool calling")
-		}
+		tcllm = openai.Provider{}
 	}
 
 	toolMap := make(map[string]Tool)
@@ -106,7 +109,6 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 
 	log := s.logr()
 
-	// Build tool definitions
 	toolDefs := make([]gentic.ToolDefinition, len(s.tools))
 	for i, tool := range s.tools {
 		toolDefs[i] = gentic.ToolDefinition{
@@ -119,19 +121,13 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 		}
 	}
 
-	// Initialize message thread
-	messages := []gentic.ToolMessage{
-		{Role: "system", Content: s.systemPrompt},
-		{Role: "user", Content: state.Input},
-	}
+	messages := initialToolMessages(s.systemPrompt, state)
 
 	for step := 0; step < s.maxSteps; step++ {
-		// Progress for streaming clients
 		if n != nil {
 			n.Notify("react", gentic.ActivityRunning, fmt.Sprintf("Reasoning step %d of %d", step+1, s.maxSteps),
 				gentic.WithTransient(true))
 		}
-
 
 		resp, err := tcllm.ChatWithTools(ctx, s.model, messages, toolDefs)
 		if err != nil {
@@ -139,14 +135,11 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 			return fmt.Errorf("react: step %d: %w", step+1, err)
 		}
 
-		// Append assistant message to thread
 		messages = append(messages, resp.Message)
 
-		// Append thought to state (for compatibility)
 		if resp.Message.Content != "" {
 			state.Thoughts = append(state.Thoughts, resp.Message.Content)
 		} else if len(resp.Message.ToolCalls) > 0 {
-			// Represent tool calls as a thought
 			var toolNames []string
 			for _, tc := range resp.Message.ToolCalls {
 				toolNames = append(toolNames, tc.Function.Name)
@@ -154,36 +147,28 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 			state.Thoughts = append(state.Thoughts, fmt.Sprintf("Calling tools: %v", toolNames))
 		}
 
-		// Log the reasoning step (the model's thought)
 		log.Info("react think",
 			"step", step+1,
 			"thought", truncateForLog(state.Thoughts[len(state.Thoughts)-1], 120))
 
-		// Check termination condition
 		if resp.FinishReason == "stop" && len(resp.Message.ToolCalls) == 0 {
 			log.Info("react done", "step", step+1)
 			state.Output = resp.Message.Content
 			return nil
 		}
 
-		// If no tool calls but not stopped, model is confused; give it another turn
 		if len(resp.Message.ToolCalls) == 0 {
 			log.Warn("react: no tool call, retrying", "step", step+1)
 			continue
 		}
 
-		// Execute tool calls
 		for _, toolCall := range resp.Message.ToolCalls {
 			toolName := toolCall.Function.Name
-
-			// Parse arguments
 			toolInput := json.RawMessage(toolCall.Function.Arguments)
 
 			tool, ok := toolMap[toolName]
 			if !ok {
 				log.Warn("react: unknown tool", "step", step+1, "tool", toolName)
-
-				// Append error tool message so model knows
 				messages = append(messages, gentic.ToolMessage{
 					Role:       "tool",
 					ToolCallID: toolCall.ID,
@@ -232,7 +217,6 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 				resultContent = string(result)
 			}
 
-			// Append tool result message to thread
 			messages = append(messages, gentic.ToolMessage{
 				Role:       "tool",
 				ToolCallID: toolCall.ID,
@@ -240,12 +224,10 @@ func (s reactLoopStep) runLoop(ctx context.Context, state *gentic.State, n *gent
 				Content:    resultContent,
 			})
 
-			// Also append to state.Observations for compatibility
 			s.appendObservation(state, toolName, json.RawMessage(resultContent), toolErr)
 		}
 	}
 
-	// Max steps reached without termination
 	if len(state.Thoughts) > 0 {
 		state.Output = fmt.Sprintf(
 			"I couldn't complete that within %d reasoning steps. Please try again or rephrase your question.",
@@ -263,14 +245,6 @@ func (s reactLoopStep) appendObservation(state *gentic.State, toolName string, r
 	if toolErr != nil {
 		observation = fmt.Sprintf("Error: %v", toolErr)
 	} else {
-		if s.validateMetadataLeaks {
-			var toolOutput map[string]interface{}
-			if err := json.Unmarshal(result, &toolOutput); err == nil {
-				if state.SecureMetadata().ContainsPrivateData(toolOutput) {
-					s.logr().Warn("tool output may contain sensitive metadata keys", "tool", toolName)
-				}
-			}
-		}
 		observation = string(result)
 	}
 

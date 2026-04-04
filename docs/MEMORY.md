@@ -1,17 +1,17 @@
 # Memory in Gentic
 
-Gentic now supports conversation memory, allowing agents to maintain context across multiple runs. This is essential when using gentic with Vercel AI SDK for building conversational AI applications.
+Gentic supports optional **per-thread** conversation storage via **`Agent.MemoryStore`** (`ThreadStore`), so agents can maintain context across multiple runs. This pairs well with the Vercel AI SDK when the backend receives **`ThreadID`** or full **`Messages`** arrays.
 
 ## Overview
 
-By default, memory is **disabled** — each `agent.Run()` starts fresh with no prior context. This preserves backward compatibility with all existing code.
+By default, memory is **disabled** — set **`MemoryStore: nil`** and each `RunWithContext` only sees **`AgentInput`** for that call (unless you pass **`Messages`** explicitly).
 
-To enable memory, simply attach a `Memory` implementation to your agent:
+To enable persisted multi-turn memory, set a **`ThreadStore`** and pass a non-empty **`AgentInput.ThreadID`**. The agent loads prior messages from the store when **`Messages`** is empty, then appends the new user and assistant messages after a successful run:
 
 ```go
 agent := gentic.Agent{
-    Resolver: myResolver,
-    Memory:   gentic.NewInMemoryStorage(),
+    Resolver:    myResolver,
+    MemoryStore: gentic.NewInMemoryThreadStore(),
 }
 ```
 
@@ -45,15 +45,13 @@ type Memory interface {
 }
 ```
 
-### InMemoryStorage (Default)
+### InMemoryStorage (per-thread backing)
 
-Gentic provides a thread-safe in-memory implementation out of the box:
+**`InMemoryThreadStore`** creates an **`InMemoryStorage`** per thread ID. You can also use **`NewInMemoryStorage()`** directly when you attach a single **`Memory`** to a custom **`ThreadStore`** implementation.
 
 ```go
-memory := gentic.NewInMemoryStorage()
-agent.Memory = memory
-
-// Messages are stored in a slice and reset when the process exits
+store := gentic.NewInMemoryThreadStore()
+// store.Get(threadID) returns gentic.Memory for that thread
 ```
 
 ### Custom Implementations
@@ -78,27 +76,32 @@ func (m *DatabaseMemory) Clear() error {
     // Delete all messages
 }
 
-// Use it
-agent.Memory = &DatabaseMemory{db: myDB}
+// Implement ThreadStore: Get(threadID) returns a DatabaseMemory (or similar) for that thread.
+// Then: agent := gentic.Agent{ Resolver: r, MemoryStore: myThreadStore }
 ```
 
 ## Usage Patterns
 
-### Pattern 1: Simple Multi-Turn Conversation
+### Pattern 1: Simple multi-turn conversation (thread store)
 
 ```go
 agent := gentic.Agent{
-    Resolver: react.NewReactActor(),
-    Memory:   gentic.NewInMemoryStorage(),
+    Resolver:    react.NewReactActor(),
+    MemoryStore: gentic.NewInMemoryThreadStore(),
 }
+ctx := context.Background()
 
 // Turn 1
-result1, _ := agent.Run("What is the capital of France?")
-// Memory: [user: "What is the capital...", assistant: result1.Output]
+_, _ = agent.RunWithContext(ctx, gentic.AgentInput{
+    Query:    "What is the capital of France?",
+    ThreadID: "user-1",
+})
 
-// Turn 2 - conversation history is automatically included
-result2, _ := agent.Run("What's the population there?")
-// The agent sees prior context about France and can answer about Paris
+// Turn 2 — prior messages load into State.Messages; State.Input is the new question
+_, _ = agent.RunWithContext(ctx, gentic.AgentInput{
+    Query:    "What's the population there?",
+    ThreadID: "user-1",
+})
 ```
 
 ### Pattern 2: Vercel AI SDK Backend Handler
@@ -126,54 +129,28 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-### Pattern 3: Persistent Cross-Session Memory
+### Pattern 3: Persistent cross-session memory
 
-For applications that need memory across restarts, implement a custom Memory backend:
+Implement **`ThreadStore`** (or **`Memory`**) with a database so **`Get(threadID)`** returns stored messages after restart. Wire **`Agent.MemoryStore`** to that implementation.
 
-```go
-type PersistentMemory struct {
-    db *sql.DB
-}
-
-agent := gentic.Agent{
-    Resolver: myResolver,
-    Memory:   &PersistentMemory{db: myDB},
-}
-
-// Even after process restart, memory is retrieved from database
-result, _ := agent.Run("Tell me about our previous conversation")
-```
-
-## Toggling Memory On/Off
-
-Memory is completely optional and zero-cost when disabled:
+## Toggling memory on/off
 
 ```go
-// Memory disabled (default — no overhead)
+// Memory disabled (default)
 agent1 := gentic.Agent{Resolver: myResolver}
 
-// Memory enabled
+// Memory enabled — same resolver, optional thread persistence
 agent2 := gentic.Agent{
-    Resolver: myResolver,
-    Memory:   gentic.NewInMemoryStorage(),
+    Resolver:    myResolver,
+    MemoryStore: gentic.NewInMemoryThreadStore(),
 }
-
-// Both agents behave identically except agent2 maintains history
 ```
 
-## How History is Used
+## How history is used
 
-When memory is enabled and prior messages exist, they are automatically prepended to the current query as context:
+**`State.Input`** is only the **current user message** (text). **It is not** a single string that embeds the whole transcript.
 
-```
-[Conversation History]
-User: What is the capital of France?
-Assistant: The capital of France is Paris.
-
-What's the population there?
-```
-
-This enriched input is passed to the LLM, allowing it to understand the conversation context without requiring changes to your resolver or tools.
+When memory is enabled (or when you pass **`AgentInput.Messages`**), prior turns are available on **`State.Messages`**. Resolvers and steps that call an LLM with history (for example **ReAct** in `pkg/gentic/react`) build the model thread from **`State.Messages`** and the current **`State.Input`**—they do **not** concatenate history into **`State.Input`**.
 
 ## Message Helpers
 
@@ -188,45 +165,27 @@ msg3 := gentic.NewSystemMessage("You are a helpful math tutor.")
 text := msg1.TextContent() // "What is 2+2?"
 ```
 
-## Testing with Memory
+## Testing with memory
 
-Unit tests can use in-memory storage:
+Use a **`ThreadStore`** and a fixed **`ThreadID`**, or clear the thread’s **`Memory`** between cases:
 
 ```go
 func TestAgentWithMemory(t *testing.T) {
-    memory := gentic.NewInMemoryStorage()
+    store := gentic.NewInMemoryThreadStore()
     agent := gentic.Agent{
-        Resolver: myResolver,
-        Memory:   memory,
+        Resolver:    myResolver,
+        MemoryStore: store,
     }
-
-    agent.Run("First question")
-    agent.Run("Follow-up question")
-
-    messages, _ := memory.Messages()
+    ctx := context.Background()
+    tid := "test-thread"
+    _, _ = agent.RunWithContext(ctx, gentic.AgentInput{Query: "First question", ThreadID: tid})
+    _, _ = agent.RunWithContext(ctx, gentic.AgentInput{Query: "Follow-up", ThreadID: tid})
+    mem := store.Get(tid)
+    messages, _ := mem.Messages()
     if len(messages) != 4 { // 2 user + 2 assistant
         t.Fatalf("expected 4 messages, got %d", len(messages))
     }
 }
-```
-
-Or clear memory between test cases:
-
-```go
-memory := gentic.NewInMemoryStorage()
-agent := gentic.Agent{
-    Resolver: myResolver,
-    Memory:   memory,
-}
-
-// Test 1
-agent.Run("query1")
-// ...
-
-// Reset for test 2
-memory.Clear()
-agent.Run("query2")
-// ...
 ```
 
 ## AgentInput Extensions

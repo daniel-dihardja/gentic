@@ -6,11 +6,11 @@ This document explains how to safely handle sensitive data (API keys, tokens, ID
 
 Metadata allows you to pass context (user_id, tenant_id, analyticsId, etc.) through agent execution. However, tools have access to this metadata and could accidentally leak sensitive information to the LLM or external systems.
 
-Gentic provides a **secure metadata access pattern** to prevent leaks:
+Gentic provides a **secure metadata access pattern** to reduce leaks:
 
-1. **Private vs Public Metadata** — keys prefixed with `_` are protected
-2. **Restricted Access** — tools use `SecureMetadata()` to access public data only
-3. **Output Validation** — optionally detect when sensitive data appears in tool outputs
+1. **Private vs public metadata** — keys prefixed with `_` are protected; common secret-like names are blocklisted
+2. **Restricted access** — tools use `SecureMetadata()` to read **public** data only
+3. **Discipline in tools** — return minimal JSON; do not copy private metadata into tool results
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ result, err := agent.RunWithContext(gentic.AgentInput{
         // Public: safe for tools to access and return
         "analyticsId": "analytics_001",
 
-        // Private: blocked from tool access, leaked output detection enabled
+        // Private: blocked from SecureMetadata()
         "_api_key":    "sk_live_xyz123",
         "_db_password": "secret_pass",
     },
@@ -44,13 +44,6 @@ func myTool(state *gentic.State, input json.RawMessage) (json.RawMessage, error)
     })
 }
 
-// 3. Enable validation to catch leaks
-agent := gentic.Agent{
-    Resolver: react.NewReactActor(
-        react.WithTools(myTool),
-        react.WithValidateMetadataLeaks(true), // ← Enable warnings
-    ),
-}
 ```
 
 ## Metadata Classification
@@ -129,30 +122,15 @@ func internalStep(state *gentic.State) {
 }
 ```
 
-## Output Validation
+## Tool output hygiene
 
-Enable warnings when tools return sensitive data:
+The ReAct loop does **not** rewrite or scan tool JSON for secrets. Treat every tool as responsible for returning only safe, minimal fields. Use **`SecureMetadata()`** inside tools so private keys are never read by mistake.
 
 ```go
-agent := gentic.Agent{
-    Resolver: react.NewReactActor(
-        react.WithTools(myTool),
-        react.WithValidateMetadataLeaks(true),  // ← Enable
-    ),
-}
-```
-
-When enabled, the framework logs warnings:
-```
-[react] WARNING: tool 'fetch_data' output may contain sensitive metadata (keys starting with '_')
-```
-
-This helps catch bugs where tools accidentally return:
-```go
-// ❌ BAD: Tool returns private metadata
+// ❌ BAD: Tool forwards private metadata into the observation
 return json.Marshal(map[string]interface{}{
     "data": result,
-    "_api_key": state.Metadata["_api_key"],  // Warning!
+    "_api_key": state.Metadata["_api_key"],
 })
 ```
 
@@ -204,7 +182,6 @@ result, _ := agent.RunWithContext(gentic.AgentInput{
 - [ ] Sensitive data uses `_` prefix or is blocklisted
 - [ ] Tools use `SecureMetadata()` not `state.Metadata`
 - [ ] Tools only return necessary data, not metadata
-- [ ] Validation enabled in production: `WithValidateMetadataLeaks(true)`
 - [ ] No sensitive keys passed unnecessarily
 - [ ] Tool code reviewed for metadata handling
 - [ ] Example: see `examples/react-with-analytics/main.go`
@@ -228,7 +205,6 @@ func newTool(state *gentic.State, ...) {
 Benefits:
 - Protects against accidental sensitive key access
 - Fails safely (returns empty string) if key is private
-- Framework can detect leaks with validation enabled
 - Documents intent: "this tool only uses public metadata"
 
 ## Implementation Details
@@ -249,9 +225,6 @@ func (m *MetadataAccessor) GetString(key string) string
 
 // Keys returns all public keys
 func (m *MetadataAccessor) Keys() []string
-
-// ContainsPrivateData checks if data has sensitive keys
-func (m *MetadataAccessor) ContainsPrivateData(data map[string]interface{}) bool
 ```
 
 ### Private Key Determination
@@ -269,11 +242,8 @@ A: No, `SecureMetadata()` blocks them. Only use `state.Metadata` directly in tru
 **Q: What happens if a tool tries to access a private key?**
 A: Returns empty value (nil or empty string). No error is raised—fails safe.
 
-**Q: Does validation block the tool or just warn?**
-A: Only warns. Tool output is not modified. Warnings help catch bugs in development.
-
 **Q: Can I have custom sensitive keys?**
-A: Use `_` prefix for any custom sensitive key. For common names, add to blocklist in `MetadataAccessor.isPrivateKey()`.
+A: Use `_` prefix for any custom sensitive key. For framework-wide blocklist changes, extend `sensitiveMetadataKeyBlocklist` in `pkg/gentic/state.go`.
 
 **Q: Is metadata encrypted?**
 A: No. Encryption is application-layer responsibility. Use `_` prefix to mark what shouldn't leak, but assume in-memory data can be accessed if the process is compromised.

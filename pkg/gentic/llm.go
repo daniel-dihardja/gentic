@@ -59,8 +59,7 @@ type ToolCallingResponse struct {
 }
 
 // ToolCallingLLM is satisfied by providers that support native function/tool calling.
-// It is intentionally separate from LLM so existing resolvers (Planner, Reflector, Router)
-// are never perturbed.
+// It is intentionally separate from LLM so existing resolvers are never perturbed.
 type ToolCallingLLM interface {
 	ChatWithTools(
 		ctx context.Context,

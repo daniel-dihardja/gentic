@@ -35,23 +35,21 @@ type Tool struct {
 // ReactActor implements a Reasoning + Acting loop.
 // It satisfies gentic.IntentResolver and is used directly as an Agent resolver.
 type ReactActor struct {
-	llm                    gentic.LLM
-	toolCallingLLM         gentic.ToolCallingLLM
-	model                  string
-	maxSteps               int
-	systemPrompt           string
-	tools                  []Tool
-	validateMetadataLeaks  bool
-	logger                 *slog.Logger
-	toolTimeout            time.Duration
+	toolCallingLLM gentic.ToolCallingLLM
+	model          string
+	maxSteps       int
+	systemPrompt   string
+	tools          []Tool
+	logger         *slog.Logger
+	toolTimeout    time.Duration
 }
 
 // Option configures a ReactActor.
 type Option func(*ReactActor)
 
-// WithLLM sets the LLM provider. Defaults to openai.Provider{}.
-func WithLLM(llm gentic.LLM) Option {
-	return func(r *ReactActor) { r.llm = llm }
+// WithLLM sets the tool-calling LLM provider. Defaults to [openai.Provider].
+func WithLLM(llm gentic.ToolCallingLLM) Option {
+	return func(r *ReactActor) { r.toolCallingLLM = llm }
 }
 
 // WithModel overrides the model used for LLM calls.
@@ -74,11 +72,6 @@ func WithTools(tools ...Tool) Option {
 	return func(r *ReactActor) { r.tools = tools }
 }
 
-// WithValidateMetadataLeaks enables warnings when tool outputs contain sensitive metadata.
-func WithValidateMetadataLeaks(enabled bool) Option {
-	return func(r *ReactActor) { r.validateMetadataLeaks = enabled }
-}
-
 // WithLogger sets structured logging for the ReAct loop.
 // If nil, the loop still emits INFO traces via slog.Default() (component gentic.react).
 func WithLogger(l *slog.Logger) Option {
@@ -90,19 +83,14 @@ func WithToolTimeout(d time.Duration) Option {
 	return func(r *ReactActor) { r.toolTimeout = d }
 }
 
-// WithToolCallingLLM sets a tool-calling LLM provider. Prefer this if your LLM supports native tool calling.
-func WithToolCallingLLM(tcllm gentic.ToolCallingLLM) Option {
-	return func(r *ReactActor) { r.toolCallingLLM = tcllm }
-}
-
 // NewReactActor creates a ReactActor ready to use as a gentic.Agent resolver.
 func NewReactActor(opts ...Option) *ReactActor {
 	r := &ReactActor{
-		llm:          openai.Provider{},
-		model:        openai.DefaultModel,
-		maxSteps:     defaultMaxSteps,
-		systemPrompt: defaultSystemPrompt,
-		tools:        []Tool{},
+		toolCallingLLM: openai.Provider{},
+		model:          openai.DefaultModel,
+		maxSteps:       defaultMaxSteps,
+		systemPrompt:   defaultSystemPrompt,
+		tools:          []Tool{},
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -110,22 +98,27 @@ func NewReactActor(opts ...Option) *ReactActor {
 	return r
 }
 
+// Flow returns the single-step flow that runs the ReAct loop (same as [ReactActor.Resolve]).
+func (r *ReactActor) Flow() gentic.Flow {
+	return gentic.NewFlow(r.asLoopStep())
+}
+
+func (r *ReactActor) asLoopStep() reactLoopStep {
+	return reactLoopStep{
+		toolCallingLLM: r.toolCallingLLM,
+		model:          r.model,
+		maxSteps:       r.maxSteps,
+		systemPrompt:   r.systemPrompt,
+		tools:          r.tools,
+		logger:         r.logger,
+		toolTimeout:    r.toolTimeout,
+	}
+}
+
 // Resolve implements gentic.IntentResolver.
 // It returns a single-step flow containing the ReAct loop.
 func (r *ReactActor) Resolve(_ context.Context, _ *gentic.State) gentic.Flow {
-	return gentic.NewFlow(
-		reactLoopStep{
-			llm:                   r.llm,
-			toolCallingLLM:        r.toolCallingLLM,
-			model:                 r.model,
-			maxSteps:              r.maxSteps,
-			systemPrompt:          r.systemPrompt,
-			tools:                 r.tools,
-			validateMetadataLeaks: r.validateMetadataLeaks,
-			logger:                r.logger,
-			toolTimeout:           r.toolTimeout,
-		},
-	)
+	return r.Flow()
 }
 
 // NewTool is a helper for tools that do not need state/metadata access.

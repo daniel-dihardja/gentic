@@ -81,7 +81,7 @@ Step through the tea examples: **[planning-01](./examples/simple/planning-01)** 
 
 ## Metadata / Ambient Context
 
-Thread **ambient context** (user id, tenant, request id, feature flags) through a run without baking it into the prompt. Use **`RunWithContext`** with **`AgentInput`**: **`Metadata`** is available on **`state.Metadata`** for your steps. Prefer **`state.SecureMetadata()`** in tools and integrations—only **public** keys are visible; keys prefixed with **`'_'`** are **private** (credentials stay off tool-facing APIs). ReAct can optionally warn when a tool’s JSON output looks like it leaks private metadata.
+Thread **ambient context** (user id, tenant, request id, feature flags) through a run without baking it into the prompt. Use **`RunWithContext`** with **`AgentInput`**: **`Metadata`** is available on **`state.Metadata`** for your steps. Prefer **`state.SecureMetadata()`** in tools and integrations—only **public** keys are visible; keys prefixed with **`'_'`** are **private** (credentials stay off tool-facing APIs). See [SECURITY_METADATA.md](docs/SECURITY_METADATA.md) for the private-key rules and blocklist.
 
 ```go
 import "github.com/daniel-dihardja/gentic/pkg/gentic"
@@ -153,9 +153,11 @@ Try **[reflection-01](./examples/simple/reflection-01)** (default prompts) and *
 
 ## Memory
 
-**MemoryStore** is optional **multi-turn** context for `gentic.Agent`. With **`MemoryStore: nil`**, each **`Run`** is stateless (unless you pass **`AgentInput.Messages`**). When you set a **`gentic.ThreadStore`** (e.g. **`NewInMemoryThreadStore()`**) and a non-empty **`AgentInput.ThreadID`**, the agent resolves a per-thread **`Memory`**, **loads** prior messages before the resolver runs, **enriches** `State.Input` with a `[Conversation History]` preamble, then **appends** the new user turn and assistant **`Output`** after a successful run.
+**MemoryStore** is optional **multi-turn** context for `gentic.Agent`. With **`MemoryStore: nil`**, each run only sees what you pass in **`AgentInput`** (no persisted thread). When you set a **`gentic.ThreadStore`** (e.g. **`NewInMemoryThreadStore()`**) and a non-empty **`AgentInput.ThreadID`**, the agent loads prior messages from that thread when **`AgentInput.Messages`** is empty, then runs the resolver. After a successful run it **appends** the current user turn and assistant **`Output`** to thread memory.
 
-Implement **`Memory`** yourself (`Append`, **`Messages`**, **`Clear`**) for a database-backed cache, or use **`NewInMemoryThreadStore()`** so each **thread ID** gets an isolated **`InMemoryStorage`**. Alternatively, **`RunWithContext(gentic.AgentInput{ Messages: ... })`** supplies a **Vercel AI SDK–compatible** message list directly; the last user message becomes the current query, and history is merged the same way for the run.
+**`State.Input`** is always the **current user text** (last user message), not a concatenated history string. Prior turns live in **`State.Messages`** (Vercel AI SDK–compatible). Flows that need full history (for example **ReAct**) build the model thread from **`State.Messages`** plus the current turn—see **`react.initialToolMessages`** in `pkg/gentic/react/loop.go`.
+
+Implement **`Memory`** yourself (`Append`, **`Messages`**, **`Clear`**) for a database-backed cache, or use **`NewInMemoryThreadStore()`** so each **thread ID** gets an isolated **`InMemoryStorage`**. Alternatively, **`RunWithContext(gentic.AgentInput{ Messages: ... })`** passes a full message list from the client; the last user message becomes **`State.Input`**, and **`State.Messages`** carries the conversation for that run.
 
 ```go
 import "github.com/daniel-dihardja/gentic/pkg/gentic"
@@ -168,17 +170,16 @@ agent := gentic.Agent{
 }
 
 _, err := agent.RunWithContext(ctx, gentic.AgentInput{Query: "What is the capital of France?", ThreadID: "user-1"})
-_, err = agent.RunWithContext(ctx, gentic.AgentInput{Query: "What is the population of that city?", ThreadID: "user-1"}) // prior turn is in State.Input
+_, err = agent.RunWithContext(ctx, gentic.AgentInput{Query: "What is the population of that city?", ThreadID: "user-1"}) // prior user/assistant turns are in State.Messages; State.Input is the new question
 ```
 
 Walk through multi-turn ReAct and the **`Messages`** path in **[examples/simple/with-memory](./examples/simple/with-memory)**—`go run ./examples/simple/with-memory/main.go`.
 
 ## Security Features
 
-🔒 **Production-ready security patterns** built-in:
+🔒 **Production-ready patterns** for metadata:
 
-- Metadata access control (public vs private keys)
-- Tools receive state but cannot access sensitive credentials
-- Metadata leak detection with warnings
+- **Public vs private keys** — use **`state.SecureMetadata()`** in tools; **`_`-prefixed** keys and a small **blocklist** (e.g. `token`, `password`) are hidden from that view.
+- Tools should return only what the user needs; keep secrets out of tool JSON by design.
 
-See [SECURITY_METADATA.md](SECURITY_METADATA.md) for rules and blocklists, and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/) for a production-oriented pattern.
+See [SECURITY_METADATA.md](docs/SECURITY_METADATA.md) for rules and blocklists, and [examples/applications/instagram-post-generator/](examples/applications/instagram-post-generator/) for a production-oriented pattern.

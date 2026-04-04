@@ -42,7 +42,7 @@ func TestNativeLoop_StopOnFirstTurn(t *testing.T) {
 
 	state := &gentic.State{Input: "What is 2+2?"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(5),
 	)
 	flow := actor.Resolve(context.Background(), state)
@@ -110,7 +110,7 @@ func TestNativeLoop_SingleToolCallThenStop(t *testing.T) {
 
 	state := &gentic.State{Input: "Show me my profile"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(5),
 		WithTools(stubTool),
 	)
@@ -178,7 +178,7 @@ func TestNativeLoop_ToolErrorFeedback(t *testing.T) {
 
 	state := &gentic.State{Input: "Try to use failing tool"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(5),
 		WithTools(failingTool),
 	)
@@ -229,7 +229,7 @@ func TestNativeLoop_MaxStepsReached(t *testing.T) {
 
 	state := &gentic.State{Input: "Test max steps"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(3),
 		WithTools(stubTool),
 	)
@@ -308,7 +308,7 @@ func TestNativeLoop_MultipleToolCallsInOneTurn(t *testing.T) {
 
 	state := &gentic.State{Input: "Test parallel calls"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(5),
 		WithTools(stubTool),
 	)
@@ -397,7 +397,7 @@ func TestNativeLoop_StateObservationsCompat(t *testing.T) {
 
 	state := &gentic.State{Input: "Update my profile"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(10),
 		WithTools(fetchTool, updateTool),
 	)
@@ -468,7 +468,7 @@ func TestNativeLoop_GuardErrorSkipsToolHandler(t *testing.T) {
 
 	state := &gentic.State{Input: "invoke guarded tool"}
 	actor := NewReactActor(
-		WithToolCallingLLM(mockLLM),
+		WithLLM(mockLLM),
 		WithMaxSteps(5),
 		WithTools(tool),
 	)

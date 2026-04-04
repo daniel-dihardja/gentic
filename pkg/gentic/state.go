@@ -81,35 +81,25 @@ func (m *MetadataAccessor) Keys() []string {
 	return keys
 }
 
+// sensitiveMetadataKeyBlocklist is checked in addition to '_' prefix for private keys.
+var sensitiveMetadataKeyBlocklist = map[string]bool{
+	"api_key":       true,
+	"secret":        true,
+	"token":         true,
+	"password":      true,
+	"private_key":   true,
+	"access_token":  true,
+	"refresh_token": true,
+	"auth":          true,
+}
+
 // isPrivateKey returns true if the key should be treated as private/sensitive.
 // Private keys: start with '_', or are in the blocklist.
 func (m *MetadataAccessor) isPrivateKey(key string) bool {
 	if strings.HasPrefix(key, "_") {
 		return true
 	}
-	// Blocklist of known sensitive keys
-	blocklist := map[string]bool{
-		"api_key":       true,
-		"secret":        true,
-		"token":         true,
-		"password":      true,
-		"private_key":   true,
-		"access_token":  true,
-		"refresh_token": true,
-		"auth":          true,
-	}
-	return blocklist[strings.ToLower(key)]
-}
-
-// ContainsPrivateData checks if data contains any private metadata.
-// Useful for validating tool outputs don't leak sensitive information.
-func (m *MetadataAccessor) ContainsPrivateData(data map[string]interface{}) bool {
-	for key := range data {
-		if m.isPrivateKey(key) {
-			return true
-		}
-	}
-	return false
+	return sensitiveMetadataKeyBlocklist[strings.ToLower(key)]
 }
 
 // State is the shared memory that flows through every step of an agent run.
